@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Premium - Vendas</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Ícones Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        dark: { 900: '#0f0f11', 800: '#18181b', 700: '#27272a' },
+                        brand: { purple: '#8b5cf6', green: '#10b981', blue: '#3b82f6', red: '#ef4444', orange: '#f97316' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chart.js & PapaParse & SheetJS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body { background-color: #0f0f11; color: #e4e4e7; overflow: hidden; }
+        .glass-panel { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex h-screen w-full">
+
+    <!-- Barra Lateral -->
+    <aside id="sidebar" class="w-60 glass-panel flex flex-col p-5 shadow-2xl z-20 transition-all duration-300 relative flex-shrink-0">
+        
+        <!-- Botão Toggle (Setinha) -->
+        <button id="sidebarToggleBtn" onclick="toggleSidebar()" class="absolute top-8 -right-4 w-8 h-8 bg-zinc-800 border border-zinc-600 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:border-brand-purple hover:bg-zinc-700 transition-all z-50 shadow-[0_0_15px_rgba(0,0,0,0.5)] cursor-pointer">
+            <i id="sidebarIcon" class="ph ph-caret-left text-sm font-bold"></i>
+        </button>
+
+        <div class="flex items-center gap-3 mb-8">
+            <div class="p-2 bg-brand-purple rounded-lg text-white">
+                <i class="ph ph-trend-up text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-bold leading-tight">Estrelas</h1>
+                <p class="text-[10px] text-zinc-400 uppercase tracking-wide">Dashboard</p>
+            </div>
+        </div>
+
+        <!-- Área de Upload -->
+        <div class="mb-8">
+            <label for="fileInput" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-zinc-600 rounded-xl cursor-pointer hover:border-brand-purple hover:bg-zinc-800/50 transition-all group">
+                <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                    <i class="ph ph-upload-simple text-2xl text-zinc-400 group-hover:text-brand-purple mb-1 transition-colors"></i>
+                    <p class="text-xs font-semibold text-zinc-300">Upload da Base</p>
+                    <p class="text-[10px] text-zinc-500 mt-1">(.xlsx, .csv)</p>
+                </div>
+                <input id="fileInput" type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" />
+            </label>
+            <div id="uploadStatus" class="text-xs text-center mt-2 text-brand-green hidden">
+                <i class="ph ph-check-circle inline mr-1"></i> Carregada com sucesso!
+            </div>
+        </div>
+
+        <div class="w-full h-[1px] bg-zinc-800 mb-6"></div>
+
+        <!-- Filtros -->
+        <h2 class="text-xs font-semibold text-zinc-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <i class="ph ph-funnel"></i> Filtros Ativos
+        </h2>
+        
+        <div class="flex flex-col gap-4 flex-1">
+            <div class="flex flex-col gap-1.5">
+                <label class="text-[11px] text-zinc-400">Supervisor</label>
+                <select id="filterSupervisor" class="bg-dark-900 border border-zinc-700 text-xs rounded-lg p-2.5 outline-none focus:border-brand-purple transition-colors text-zinc-200 cursor-pointer">
+                    <option value="ALL">Todos os Supervisores</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+                <label class="text-[11px] text-zinc-400">Vendedor</label>
+                <select id="filterVendedor" class="bg-dark-900 border border-zinc-700 text-xs rounded-lg p-2.5 outline-none focus:border-brand-purple transition-colors text-zinc-200 cursor-pointer disabled:opacity-50">
+                    <option value="ALL">Todos os Vendedores</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mt-auto pt-4 text-[10px] text-zinc-600 text-center">
+            Inteligência Comercial
+        </div>
+    </aside>
+
+    <!-- Conteúdo Principal -->
+    <main class="flex-1 overflow-y-auto custom-scrollbar relative">
+        
+        <!-- Alerta de Carregamento inicial -->
+        <div id="alertOverlay" class="absolute inset-0 bg-dark-900/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-2xl hidden">
+            <div class="bg-dark-800 border border-zinc-700 p-6 rounded-xl flex flex-col items-center max-w-sm text-center">
+                <i class="ph ph-files text-5xl text-brand-purple mb-4 animate-pulse"></i>
+                <h3 class="text-lg font-bold mb-2">A aguardar Base de Dados</h3>
+                <p class="text-sm text-zinc-400">Utilize o menu lateral para fazer o upload do ficheiro CSV ou Excel com as abas "META REALIZADO" e "BD".</p>
+            </div>
+        </div>
+
+        <!-- Wrapper Centralizado -->
+        <div class="max-w-[1400px] mx-auto w-full p-6 md:p-8 flex flex-col gap-8">
+
+            <!-- Cabeçalho Principal Padrão -->
+            <div id="defaultHeader" class="flex justify-between items-end flex-shrink-0">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-1">Visão Geral de Performance</h2>
+                    <p class="text-sm text-zinc-400" id="lastUpdateText">Mostrando dados pré-carregados. Faça upload para atualizar.</p>
+                </div>
+            </div>
+
+            <!-- NOVO: Banner de Perfil do Vendedor (Oculto por padrão) -->
+            <div id="vendedorProfileBanner" class="hidden glass-panel p-6 rounded-2xl relative overflow-hidden mb-2 border border-brand-purple/40 shadow-[0_0_30px_rgba(139,92,246,0.15)] flex-shrink-0 transition-all duration-500">
+                <div class="absolute -right-20 -top-20 w-64 h-64 bg-brand-purple/20 rounded-full blur-3xl"></div>
+                <div class="absolute -left-20 -bottom-20 w-64 h-64 bg-brand-blue/10 rounded-full blur-3xl"></div>
+                
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
+                    <div class="flex items-center gap-4 md:gap-5 min-w-0">
+                        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-brand-purple to-brand-blue flex flex-shrink-0 items-center justify-center text-2xl font-bold text-white shadow-lg border-2 border-white/10" id="vpInitials">
+                            VD
+                        </div>
+                        <div class="min-w-0">
+                            <h2 class="text-xl md:text-2xl font-bold text-white mb-2 truncate" id="vpName">Nome do Vendedor</h2>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <span class="px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm" id="vpRank">
+                                    <i class="ph ph-trophy text-sm"></i> 1º Lugar Geral
+                                </span>
+                                <span class="text-sm font-medium bg-dark-900/50 px-3 py-1 rounded-lg border border-zinc-700/50" id="vpMessage">
+                                    <!-- Mensagem dinâmica injetada via JS -->
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 w-full md:w-auto flex-shrink-0">
+                        <div class="bg-dark-900/60 p-4 rounded-xl border border-zinc-700/50 flex-1 md:min-w-[140px] shadow-inner overflow-hidden">
+                            <div class="text-xs text-zinc-400 mb-1 flex items-center gap-1.5 whitespace-nowrap"><i class="ph ph-star text-yellow-500"></i> Pontuação Total</div>
+                            <div class="text-xl md:text-2xl font-bold text-white truncate" id="vpPts">0</div>
+                        </div>
+                        <div class="bg-dark-900/60 p-4 rounded-xl border border-brand-green/30 flex-1 md:min-w-[140px] shadow-[0_0_15px_rgba(16,185,129,0.1)] overflow-hidden">
+                            <div class="text-xs text-brand-green/80 mb-1 flex items-center gap-1.5 whitespace-nowrap"><i class="ph ph-medal text-brand-green"></i> Premiação Total</div>
+                            <div class="text-xl md:text-2xl font-bold text-brand-green truncate" id="vpPremio">R$ 0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARDS OPERACIONAIS -->
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4 md:gap-6 mb-2 flex-shrink-0">
+                
+                <!-- 1. Faturamento BD -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-green/10 rounded-full blur-2xl group-hover:bg-brand-green/20 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-sm font-medium text-zinc-400">Faturamento (BD)</div>
+                        <div class="p-2 bg-brand-green/10 text-brand-green rounded-lg flex-shrink-0"><i class="ph ph-money text-lg"></i></div>
+                    </div>
+                    <div class="text-xl md:text-2xl font-bold text-white truncate" id="kpiBdFat">R$ 0</div>
+                </div>
+
+                <!-- 2. Positivação -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-red/10 rounded-full blur-2xl group-hover:bg-brand-red/20 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-sm font-medium text-zinc-400">Positivação</div>
+                        <div class="p-2 bg-brand-red/10 text-brand-red rounded-lg flex-shrink-0"><i class="ph ph-users text-lg"></i></div>
+                    </div>
+                    <div class="text-xl md:text-2xl font-bold text-white truncate" id="kpiTopPos">0</div>
+                </div>
+
+                <!-- 3. Ticket Médio -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-purple/10 rounded-full blur-2xl group-hover:bg-brand-purple/20 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-sm font-medium text-zinc-400">Ticket Médio</div>
+                        <div class="p-2 bg-brand-purple/10 text-brand-purple rounded-lg flex-shrink-0"><i class="ph ph-receipt text-lg"></i></div>
+                    </div>
+                    <div class="text-xl md:text-2xl font-bold text-white truncate" id="kpiBdTicket">R$ 0</div>
+                </div>
+
+                <!-- 4. Volume Caixas -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-blue/10 rounded-full blur-2xl group-hover:bg-brand-blue/20 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-sm font-medium text-zinc-400">Volume (Caixas)</div>
+                        <div class="p-2 bg-brand-blue/10 text-brand-blue rounded-lg flex-shrink-0"><i class="ph ph-package text-lg"></i></div>
+                    </div>
+                    <div class="text-xl md:text-2xl font-bold text-white truncate" id="kpiBdVol">0 Cx</div>
+                </div>
+
+                <!-- 5. Tons -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-orange/10 rounded-full blur-2xl group-hover:bg-brand-orange/20 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-sm font-medium text-zinc-400">Tons (Toneladas)</div>
+                        <div class="p-2 bg-brand-orange/10 text-brand-orange rounded-lg flex-shrink-0"><i class="ph ph-scales text-lg"></i></div>
+                    </div>
+                    <div class="text-xl md:text-2xl font-bold text-white truncate" id="kpiBdTons">0.0 t</div>
+                </div>
+            </div>
+
+        <!-- Tabela de KPIs (Aba Meta Realizado) -->
+        <div class="glass-panel rounded-2xl overflow-hidden w-full flex-shrink-0 shadow-lg">
+            <div class="p-5 border-b border-zinc-800/80 flex justify-between items-center bg-dark-900/30">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <i class="ph ph-table text-brand-purple"></i> Indicadores Gerais por Categoria
+                </h3>
+            </div>
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-left border-collapse whitespace-nowrap min-w-max">
+                    <thead>
+                        <tr class="border-b border-zinc-800/80 text-xs text-zinc-400 bg-dark-800/50 uppercase tracking-wider">
+                            <th class="p-4 font-semibold sticky left-0 bg-dark-800/90 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)]">Categoria</th>
+                            <th class="p-4 font-semibold text-center border-r border-zinc-800/50 bg-brand-purple/5" title="Gatilho Geral de Liberação"> % Gatilho</th>
+                            <th class="p-4 font-semibold text-right">Meta</th>
+                            <th class="p-4 font-semibold text-right">Realizado</th>
+                            <th class="p-4 font-semibold text-center">% Atingimento</th>
+                            <th class="p-4 font-semibold text-center"><i class="ph ph-star text-yellow-400 mr-1"></i> Pontos</th>
+                            <th class="p-4 font-semibold text-right"><i class="ph ph-medal text-yellow-500 mr-1"></i> Premiação</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+                        <!-- Categoria: Total PDB -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors bg-white/[0.02]">
+                            <td class="p-4 text-white font-bold sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-currency-dollar text-brand-blue text-lg"></i> Total PDB
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockTotal"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiTotalMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiTotalRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiTotalPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiTotalPts">0</td>
+                            <td class="p-4 text-brand-blue font-bold text-right" id="kpiTotalPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: Foods -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-pizza text-brand-green text-lg"></i> Foods
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockFoods"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiFoodsMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiFoodsRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiFoodsPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiFoodsPts">0</td>
+                            <td class="p-4 text-brand-green font-bold text-right" id="kpiFoodsPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: Salty -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-popcorn text-brand-purple text-lg"></i> Salty
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockSalty"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiSaltyMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiSaltyRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiSaltyPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiSaltyPts">0</td>
+                            <td class="p-4 text-brand-purple font-bold text-right" id="kpiSaltyPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: Positivação -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-users text-brand-red text-lg"></i> Positivação
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockPos"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiPosMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiPosRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiPosPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiPosPts">0</td>
+                            <td class="p-4 text-brand-red font-bold text-right" id="kpiPosPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: Acelerador -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-rocket-launch text-orange-500 text-lg"></i> Acelerador
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockAcel"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiAcelMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiAcelRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiAcelPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiAcelPts">0</td>
+                            <td class="p-4 text-orange-500 font-bold text-right" id="kpiAcelPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: SKU/PDV -->
+                        <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-package text-yellow-500 text-lg"></i> SKU/PDV
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockSKU"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiSKUMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiSKURealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiSKUPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiSKUPts">0</td>
+                            <td class="p-4 text-yellow-500 font-bold text-right" id="kpiSKUPremio">R$ 0</td>
+                        </tr>
+
+                        <!-- Categoria: Loja Perfeita -->
+                        <tr class="hover:bg-zinc-800/30 transition-colors">
+                            <td class="p-4 text-zinc-200 font-medium sticky left-0 bg-dark-900/80 backdrop-blur-md z-10 border-r border-zinc-800/50 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)] flex items-center gap-2">
+                                <i class="ph ph-storefront text-teal-400 text-lg"></i> Loja Perfeita
+                            </td>
+                            <td class="p-4 text-center border-r border-zinc-800/50 bg-brand-purple/5" id="kpiUnlockLoja"></td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiLojaMeta">0</td>
+                            <td class="p-4 text-zinc-300 text-right" id="kpiLojaRealizado">0</td>
+                            <td class="p-4 text-center"><span id="kpiLojaPercent" class="px-2 py-1 rounded text-xs font-semibold">0%</span></td>
+                            <td class="p-4 text-zinc-300 text-center" id="kpiLojaPts">0</td>
+                            <td class="p-4 text-teal-400 font-bold text-right" id="kpiLojaPremio">R$ 0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Área de Gráficos -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-shrink-0 min-h-[300px] pb-8">
+            <!-- Gráfico: Top Vendedores -->
+            <div class="glass-panel p-6 rounded-2xl lg:col-span-2 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-base font-bold text-white">Top Performance: Vendedores (% PDB)</h3>
+                        <i class="ph ph-ranking text-brand-purple text-xl"></i>
+                    </div>
+                    <button onclick="openRankingModal()" class="text-xs bg-zinc-800 hover:bg-brand-purple text-zinc-300 hover:text-white px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-brand-purple transition-all flex items-center gap-1.5 cursor-pointer shadow-lg">
+                        <i class="ph ph-list-numbers text-sm"></i> Ver Detalhes
+                    </button>
+                </div>
+                <div class="relative flex-1 w-full h-full min-h-[250px]">
+                    <canvas id="chartVendedores"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico: Mix de Categoria -->
+            <div class="glass-panel p-6 rounded-2xl flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-base font-bold text-white">Mix de Faturamento</h3>
+                    <i class="ph ph-chart-pie-slice text-brand-blue text-xl"></i>
+                </div>
+                <div class="relative flex-1 w-full h-full min-h-[250px] flex items-center justify-center">
+                    <canvas id="chartMix"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico: Supervisores -->
+            <div class="glass-panel p-6 rounded-2xl lg:col-span-3 flex flex-col min-h-[300px]">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-base font-bold text-white">Atingimento por Supervisor</h3>
+                    <i class="ph ph-users-three text-brand-green text-xl"></i>
+                </div>
+                <div class="relative flex-1 w-full h-full">
+                    <canvas id="chartSupervisores"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        </div> <!-- Fim do Wrapper Centralizado -->
+
+        <!-- Modal de Ranking de Vendedores -->
+        <div id="rankingModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 transition-opacity">
+            <div class="glass-panel w-full max-w-6xl rounded-2xl border border-zinc-700 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+                <!-- Cabeçalho do Modal -->
+                <div class="p-5 border-b border-zinc-800/80 flex justify-between items-center bg-dark-900/80">
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="ph ph-trophy text-yellow-500 text-2xl"></i> Ranking Detalhado: Pontos por Categoria
+                    </h2>
+                    <button onclick="closeRankingModal()" class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors cursor-pointer">
+                        <i class="ph ph-x text-xl"></i>
+                    </button>
+                </div>
+                
+                <!-- Corpo do Modal (Tabela) -->
+                <div class="p-0 overflow-auto custom-scrollbar flex-1 bg-dark-900/40">
+                    <table class="w-full text-left border-collapse whitespace-nowrap min-w-max text-sm">
+                        <thead class="sticky top-0 bg-dark-800/95 backdrop-blur z-10 shadow-md">
+                            <tr class="text-xs text-zinc-400 uppercase tracking-wider border-b border-zinc-800">
+                                <th class="p-4 font-semibold text-center w-16">Pos</th>
+                                <th class="p-4 font-semibold">Vendedor</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-currency-dollar text-brand-blue mr-1"></i>PDB</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-pizza text-brand-green mr-1"></i>Foods</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-popcorn text-brand-purple mr-1"></i>Salty</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-users text-brand-red mr-1"></i>Posit.</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-rocket-launch text-orange-500 mr-1"></i>Acel.</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-package text-yellow-500 mr-1"></i>SKU</th>
+                                <th class="p-4 font-semibold text-center"><i class="ph ph-storefront text-teal-400 mr-1"></i>Loja</th>
+                                <th class="p-4 font-bold text-white text-center bg-zinc-800/30">Total PTS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rankingModalBody" class="divide-y divide-zinc-800/50">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- LÓGICA DA BARRA LATERAL (TOGGLE) ---
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('sidebarIcon');
+            const btn = document.getElementById('sidebarToggleBtn');
+            
+            // Oculta a barra lateral com margem negativa (w-60 = 240px)
+            sidebar.classList.toggle('-ml-60');
+            
+            if(sidebar.classList.contains('-ml-60')) {
+                // Estado Oculto
+                icon.classList.remove('ph-caret-left');
+                icon.classList.add('ph-caret-right');
+                // Empurra o botão ligeiramente para a direita para permanecer totalmente visível
+                btn.classList.add('translate-x-4');
+            } else {
+                // Estado Visível
+                icon.classList.remove('ph-caret-right');
+                icon.classList.add('ph-caret-left');
+                btn.classList.remove('translate-x-4');
+            }
+        }
+
+        // Configurações Globais Chart.js
+        Chart.defaults.color = '#a1a1aa';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+
+        // Instâncias dos gráficos para podermos destruir e recriar
+        let chartVendedoresInst = null;
+        let chartMixInst = null;
+        let chartSupervisoresInst = null;
+
+        // Estado da aplicação
+        let appData = [];
+        let filteredData = [];
+        let appDataBD = [];
+        let filteredDataBD = [];
+
+        // Elementos DOM
+        const fileInput = document.getElementById('fileInput');
+        const selectSupervisor = document.getElementById('filterSupervisor');
+        const selectVendedor = document.getElementById('filterVendedor');
+
+        // Formatadores
+        const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
+        const formatNumber = (val) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(val);
+        const formatDecimal = (val) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(val);
+
+        // --- DADOS MOCKADOS (INICIAIS PARA VISUALIZAÇÃO) ---
+        const initialData = [
+            { codRCA: 'V1', codSup: 'S1', vendedor: 'José Fransuir', supervisor: 'Alex (P3)', metaPDB: 3419, realPDB: 3524, premPDB: 150, ptsPDB: 10, metaSalty: 2000, realSalty: 1900, premSalty: 50, ptsSalty: 5, metaFoods: 1419, realFoods: 1624, premFoods: 80, ptsFoods: 15, metaPos: 150, realPos: 120, premPos: 20, ptsPos: 8, metaAcel: 10, realAcel: 12, premAcel: 30, ptsAcel: 5, metaSKU: 16, realSKU: 14.5, premSKU: 15, ptsSKU: 4, metaLoja: 50, realLoja: 45, premLoja: 20, ptsLoja: 6 },
+            { codRCA: 'V2', codSup: 'S2', vendedor: 'Luciana Rodrigues', supervisor: 'Elio (P3)', metaPDB: 1043, realPDB: 1051, premPDB: 80, ptsPDB: 12, metaSalty: 600, realSalty: 550, premSalty: 20, ptsSalty: 3, metaFoods: 443, realFoods: 501, premFoods: 45, ptsFoods: 10, metaPos: 80, realPos: 70, premPos: 15, ptsPos: 5, metaAcel: 5, realAcel: 4, premAcel: 0, ptsAcel: 2, metaSKU: 16, realSKU: 16.2, premSKU: 25, ptsSKU: 7, metaLoja: 30, realLoja: 35, premLoja: 30, ptsLoja: 9 },
+            { codRCA: 'V3', codSup: 'S3', vendedor: 'Daiane de Sa', supervisor: 'Matheus (P3)', metaPDB: 2927, realPDB: 2948, premPDB: 120, ptsPDB: 8, metaSalty: 1500, realSalty: 1400, premSalty: 40, ptsSalty: 4, metaFoods: 1427, realFoods: 1548, premFoods: 60, ptsFoods: 12, metaPos: 192, realPos: 125, premPos: 20, ptsPos: 10, metaAcel: 12, realAcel: 8, premAcel: 0, ptsAcel: 1, metaSKU: 16, realSKU: 11.4, premSKU: 0, ptsSKU: 2, metaLoja: 73, realLoja: 46, premLoja: 0, ptsLoja: 5 },
+            { codRCA: 'V4', codSup: 'S4', vendedor: 'Outros', supervisor: 'Rodrigues (P1)', metaPDB: 52611, realPDB: 51565, premPDB: 2100, ptsPDB: 150, metaSalty: 30900, realSalty: 29416, premSalty: 800, ptsSalty: 70, metaFoods: 21711, realFoods: 22149, premFoods: 1100, ptsFoods: 90, metaPos: 1921, realPos: 1389, premPos: 220, ptsPos: 110, metaAcel: 150, realAcel: 110, premAcel: 500, ptsAcel: 45, metaSKU: 320, realSKU: 280, premSKU: 300, ptsSKU: 35, metaLoja: 800, realLoja: 650, premLoja: 400, ptsLoja: 85 }
+        ];
+
+        const initialDataBD = [
+            { codRCA: 'V1', codSup: 'S1', vendedor: 'José Fransuir', supervisor: 'Alex (P3)', fat: 3550, vol: 80, peso: 190, cli: 'C1' },
+            { codRCA: 'V2', codSup: 'S2', vendedor: 'Luciana Rodrigues', supervisor: 'Elio (P3)', fat: 1060, vol: 25, peso: 80, cli: 'C2' },
+            { codRCA: 'V3', codSup: 'S3', vendedor: 'Daiane de Sa', supervisor: 'Matheus (P3)', fat: 2950, vol: 60, peso: 150, cli: 'C3' },
+            { codRCA: 'V4', codSup: 'S4', vendedor: 'Outros', supervisor: 'Rodrigues (P1)', fat: 51600, vol: 1150, peso: 3200, cli: 'C4' },
+            { codRCA: 'V4', codSup: 'S4', vendedor: 'Outros', supervisor: 'Rodrigues (P1)', fat: 0, vol: 0, peso: 0, cli: 'C5' }
+        ];
+
+        // --- LÓGICA DE UPLOAD E PARSE (CSV e XLSX) ---
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('uploadStatus').classList.remove('hidden');
+            document.getElementById('lastUpdateText').innerHTML = `<span class="text-brand-green"><i class="ph ph-check-circle"></i> Dados atualizados do ficheiro: ${file.name}</span>`;
+            
+            const fileName = file.name.toLowerCase();
+
+            if (fileName.endsWith('.csv')) {
+                Papa.parse(file, {
+                    header: false,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        const rows = results.data;
+                        // Tenta detetar se o CSV é do BD ou da Meta
+                        const isBD = rows.slice(0, 15).some(r => r.includes('VLFAT') || r.includes('PESOBRUTO'));
+                        if (isBD) {
+                            processBDRows(rows);
+                        } else {
+                            processDataRows(rows);
+                        }
+                        updateFilterOptions();
+                        applyFiltersAndRender();
+                    }
+                });
+            } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    // 1. Processar Aba META REALIZADO
+                    let targetMetaSheet = workbook.SheetNames.find(name => name.trim().toUpperCase().includes('META REALIZADO'));
+                    if (targetMetaSheet) {
+                        const sheetMeta = workbook.Sheets[targetMetaSheet];
+                        const rowsMeta = XLSX.utils.sheet_to_json(sheetMeta, {header: 1, defval: ""});
+                        processDataRows(rowsMeta);
+                    }
+
+                    // 2. Processar Aba BD
+                    let targetBDSheet = workbook.SheetNames.find(name => {
+                        let upper = name.trim().toUpperCase();
+                        return upper === 'BD' || upper.includes('BD INVOLVES') || upper === 'BD ';
+                    });
+                    if (!targetBDSheet) {
+                        // Fallback genérico para encontrar a aba de BD
+                        targetBDSheet = workbook.SheetNames.find(name => name.trim().toUpperCase().includes('BD'));
+                    }
+
+                    if (targetBDSheet) {
+                        const sheetBD = workbook.Sheets[targetBDSheet];
+                        const rowsBD = XLSX.utils.sheet_to_json(sheetBD, {header: 1, defval: ""});
+                        processBDRows(rowsBD);
+                    } else {
+                        console.warn("Aba BD não encontrada no ficheiro Excel.");
+                    }
+
+                    if(appData.length > 0 || appDataBD.length > 0) {
+                        updateFilterOptions();
+                        applyFiltersAndRender();
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert("Formato de ficheiro não suportado. Por favor, envie um ficheiro .csv ou .xlsx.");
+            }
+        });
+
+        function processDataRows(rows) {
+            let processed = [];
+            
+            // Busca dinâmica das colunas de ID na aba Meta para evitar erros de índice fixo
+            let headerRowIndex = -1;
+            for(let i=0; i < Math.min(20, rows.length); i++){
+                const rowStr = rows[i].map(c => String(c).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
+                if(rowStr.includes('VENDEDOR')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+
+            let idxCodRca = 0; // fallback padrão
+            let idxCodSup = 2; // fallback padrão
+            if (headerRowIndex > -1) {
+                const headers = rows[headerRowIndex].map(h => String(h).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
+                let foundRca = headers.findIndex(h => h.includes('CODRCA') || h.includes('CODVEND'));
+                if (foundRca > -1) idxCodRca = foundRca;
+                let foundSup = headers.findIndex(h => h.includes('CODSUP') || h.includes('CODSUPERVISOR'));
+                if (foundSup > -1) idxCodSup = foundSup;
+            }
+
+            let startRow = 0;
+            for(let i=0; i < rows.length; i++){
+                if(rows[i][1] && String(rows[i][1]).trim() !== 'VENDEDOR' && String(rows[i][1]).trim() !== 'HOTBEL' && String(rows[i][1]).trim() !== '' && rows[i][3]) {
+                    startRow = i;
+                    break;
+                }
+            }
+
+            for (let i = startRow; i < rows.length; i++) {
+                const row = rows[i];
+                const codRCA = row[idxCodRca] ? String(row[idxCodRca]).trim() : '';
+                const vendedor = row[1] ? String(row[1]).trim() : '';
+                const codSup = row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
+                const supervisor = row[3] ? String(row[3]).trim() : '';
+                
+                if (!vendedor || vendedor === 'HOTBEL' || vendedor === 'VENDEDOR') continue;
+
+                processed.push({
+                    codRCA: codRCA,
+                    vendedor: vendedor,
+                    codSup: codSup,
+                    supervisor: supervisor,
+                    metaSalty: parseFloat(row[6]) || 0,
+                    realSalty: parseFloat(row[7]) || 0,
+                    ptsSalty: parseFloat(row[9]) || 0,
+                    premSalty: parseFloat(row[10]) || 0,
+                    metaFoods: parseFloat(row[11]) || 0,
+                    realFoods: parseFloat(row[12]) || 0,
+                    ptsFoods: parseFloat(row[14]) || 0,
+                    premFoods: parseFloat(row[15]) || 0,
+                    metaPDB: parseFloat(row[16]) || 0,
+                    realPDB: parseFloat(row[17]) || 0,
+                    ptsPDB: parseFloat(row[19]) || 0,
+                    premPDB: parseFloat(row[20]) || 0,
+                    metaPos: parseFloat(row[22]) || 0,
+                    realPos: parseFloat(row[23]) || 0,
+                    ptsPos: parseFloat(row[25]) || 0,
+                    premPos: parseFloat(row[26]) || 0,
+                    metaAcel: parseFloat(row[27]) || 0,
+                    realAcel: parseFloat(row[28]) || 0,
+                    ptsAcel: parseFloat(row[30]) || 0,
+                    premAcel: parseFloat(row[31]) || 0,
+                    metaSKU: parseFloat(row[32]) || 0,
+                    realSKU: parseFloat(row[33]) || 0, 
+                    ptsSKU: parseFloat(row[35]) || 0,
+                    premSKU: parseFloat(row[36]) || 0,
+                    metaLoja: parseFloat(row[37]) || 0,
+                    realLoja: parseFloat(row[38]) || parseFloat(row[40]) || 0,
+                    ptsLoja: parseFloat(row[41]) || 0,
+                    premLoja: parseFloat(row[42]) || 0
+                });
+            }
+
+            if(processed.length > 0) appData = processed;
+        }
+
+        function processBDRows(rows) {
+            let processed = [];
+            let headerRowIndex = -1;
+            
+            // Procura a linha que contém o cabeçalho VLFAT ou PESOBRUTO
+            for(let i=0; i<Math.min(20, rows.length); i++) {
+                const rowStr = rows[i].map(c => String(c).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
+                if(rowStr.includes('VLFAT') || rowStr.includes('PESOBRUTO') || rowStr.includes('FATURAMENTO')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+            
+            if(headerRowIndex === -1) {
+                console.warn("Colunas VLFAT ou PESOBRUTO não encontradas na aba BD.");
+                return;
+            }
+
+            const headers = rows[headerRowIndex].map(h => String(h).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
+            const idxCodRca = headers.findIndex(h => h.includes('CODRCA') || h.includes('CODVEND'));
+            const idxVend = headers.findIndex(h => h.includes('VENDEDOR') || h === 'VEND');
+            const idxCodSup = headers.findIndex(h => h.includes('CODSUP') || h.includes('CODSUPERVISOR'));
+            const idxSup = headers.findIndex(h => h.includes('SUPERVISOR') || h === 'SUP');
+            const idxFat = headers.findIndex(h => h.includes('VLFAT') || h.includes('FATURAMENTO'));
+            const idxCx = headers.findIndex(h => h.includes('QTCX') || h === 'QTCX');
+            const idxUn = headers.findIndex(h => h.includes('QTUN') || h === 'QTUN');
+            const idxPeso = headers.findIndex(h => h.includes('PESOBRUTO'));
+            const idxCli = headers.findIndex(h => h.includes('CODCLI'));
+
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if(row.length === 0) continue;
+                
+                const codRCA = idxCodRca > -1 && row[idxCodRca] ? String(row[idxCodRca]).trim() : '';
+                const vendedor = idxVend > -1 && row[idxVend] ? String(row[idxVend]).trim() : '';
+                const codSup = idxCodSup > -1 && row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
+                const supervisor = idxSup > -1 && row[idxSup] ? String(row[idxSup]).trim() : '';
+                
+                // Aceita a linha se tiver CODRCA válido, mesmo que o nome do vendedor esteja vazio no BD
+                if (!codRCA && !vendedor) continue;
+                if (vendedor === 'VENDEDOR') continue;
+
+                let vol = idxCx > -1 ? parseFloat(row[idxCx]) : NaN;
+                if(isNaN(vol)) vol = idxUn > -1 ? parseFloat(row[idxUn]) : 0;
+                if(isNaN(vol)) vol = 0;
+
+                processed.push({
+                    codRCA: codRCA,
+                    vendedor: vendedor,
+                    codSup: codSup,
+                    supervisor: supervisor,
+                    fat: idxFat > -1 ? (parseFloat(row[idxFat]) || 0) : 0,
+                    vol: vol,
+                    peso: idxPeso > -1 ? (parseFloat(row[idxPeso]) || 0) : 0,
+                    cli: idxCli > -1 && row[idxCli] ? String(row[idxCli]).trim() : ''
+                });
+            }
+            
+            if(processed.length > 0) appDataBD = processed;
+        }
+
+        // --- SISTEMA DE FILTROS ---
+        function updateFilterOptions() {
+            // Puxar nomes SOMENTE da aba principal (META REALIZADO)
+            const allSups = new Set(appData.map(d => d.supervisor));
+            const allVends = new Set(appData.map(d => d.vendedor));
+            
+            const supervisores = [...allSups].filter(Boolean).sort();
+            const vendedores = [...allVends].filter(Boolean).sort();
+
+            selectSupervisor.innerHTML = '<option value="ALL">Todos os Supervisores</option>';
+            supervisores.forEach(sup => {
+                selectSupervisor.innerHTML += `<option value="${sup}">${sup}</option>`;
+            });
+
+            selectVendedor.innerHTML = '<option value="ALL">Todos os Vendedores</option>';
+            vendedores.forEach(vend => {
+                selectVendedor.innerHTML += `<option value="${vend}">${vend}</option>`;
+            });
+        }
+
+        selectSupervisor.addEventListener('change', () => {
+            const sup = selectSupervisor.value;
+            if(sup !== 'ALL') {
+                // Filtrar vendedores da equipa SOMENTE pela aba principal
+                const vendsMeta = appData.filter(d => d.supervisor === sup).map(d => d.vendedor);
+                const vends = [...new Set(vendsMeta)].sort();
+                
+                selectVendedor.innerHTML = '<option value="ALL">Todos da Equipe</option>';
+                vends.forEach(v => selectVendedor.innerHTML += `<option value="${v}">${v}</option>`);
+            } else {
+                updateFilterOptions(); 
+            }
+            selectVendedor.value = 'ALL';
+            applyFiltersAndRender();
+        });
+
+        selectVendedor.addEventListener('change', applyFiltersAndRender);
+
+        // Função auxiliar para normalizar IDs (remove zeros à esquerda e sufixos .0 para cruzamento perfeito)
+        const normalizeId = (id) => {
+            if (!id) return '';
+            let str = String(id).trim().toUpperCase();
+            str = str.replace(/\.0$/, ''); // Remove falsos decimais do excel
+            if (/^0+[1-9]\d*$/.test(str)) str = str.replace(/^0+/, ''); // Remove zeros à esquerda de números puros
+            else if (/^0+$/.test(str)) str = '0';
+            return str;
+        };
+
+        function applyFiltersAndRender() {
+            const sup = selectSupervisor.value;
+            const vend = selectVendedor.value;
+
+            // Filtra os dados da tabela principal (META REALIZADO)
+            filteredData = appData.filter(d => {
+                let matchSup = (sup === 'ALL' || d.supervisor === sup);
+                let matchVend = (vend === 'ALL' || d.vendedor === vend);
+                return matchSup && matchVend;
+            });
+
+            // --- REGRA CRÍTICA DO REALIZADO (CARDS TOPO / ABA BD) ---
+            if (vend !== 'ALL') {
+                // Filtro Vendedor: Retornar valor cruzando pela coluna CODRCA, CODVEND rigorosamente
+                const validRCAs = new Set(appData.filter(d => d.vendedor === vend).map(d => normalizeId(d.codRCA)).filter(Boolean));
+                filteredDataBD = appDataBD.filter(d => d.codRCA && validRCAs.has(normalizeId(d.codRCA)));
+            } else if (sup !== 'ALL') {
+                // Filtro Supervisor: Retornar valor cruzando pela coluna CODSUP, CODSUPERVISOR rigorosamente
+                const validSUPs = new Set(appData.filter(d => d.supervisor === sup).map(d => normalizeId(d.codSup)).filter(Boolean));
+                filteredDataBD = appDataBD.filter(d => d.codSup && validSUPs.has(normalizeId(d.codSup)));
+            } else {
+                // Sem filtro: Total da base (REALIZADO GERAL)
+                filteredDataBD = [...appDataBD];
+            }
+
+            updateKPIs();
+            renderCharts();
+            updateVendedorProfile(); // Chama a nova função do banner
+        }
+
+        // --- NOVA LÓGICA: BANNER DE PERFIL DO VENDEDOR ---
+        function updateVendedorProfile() {
+            const vendName = selectVendedor.value;
+            const banner = document.getElementById('vendedorProfileBanner');
+            const defaultHeader = document.getElementById('defaultHeader');
+
+            // Se for "ALL", mostra o título padrão e oculta o banner
+            if (vendName === 'ALL') {
+                banner.classList.add('hidden');
+                defaultHeader.classList.remove('hidden');
+                return;
+            }
+
+            // Calcula ranking geral absoluto (sem filtros)
+            let vendorStats = {};
+            appData.forEach(d => {
+                if (!vendorStats[d.vendedor]) {
+                    vendorStats[d.vendedor] = { name: d.vendedor, pts: 0, premio: 0 };
+                }
+                vendorStats[d.vendedor].pts += (d.ptsPDB||0) + (d.ptsSalty||0) + (d.ptsFoods||0) + (d.ptsPos||0) + (d.ptsAcel||0) + (d.ptsSKU||0) + (d.ptsLoja||0);
+                vendorStats[d.vendedor].premio += (d.premPDB||0) + (d.premSalty||0) + (d.premFoods||0) + (d.premPos||0) + (d.premAcel||0) + (d.premSKU||0) + (d.premLoja||0);
+            });
+
+            let ranking = Object.values(vendorStats).sort((a, b) => b.pts - a.pts);
+            let myRankIndex = ranking.findIndex(v => v.name === vendName);
+            
+            if (myRankIndex === -1) return;
+
+            let myStats = ranking[myRankIndex];
+            let myRank = myRankIndex + 1;
+
+            // Preenche os dados da UI
+            document.getElementById('vpName').innerText = myStats.name;
+            
+            // Iniciais do Avatar
+            let parts = myStats.name.trim().split(' ');
+            let initials = parts[0][0];
+            if (parts.length > 1) initials += parts[parts.length - 1][0];
+            document.getElementById('vpInitials').innerText = initials.toUpperCase();
+
+            document.getElementById('vpPts').innerText = Number.isInteger(myStats.pts) ? formatNumber(myStats.pts) : formatDecimal(myStats.pts);
+            document.getElementById('vpPremio').innerText = formatCurrency(myStats.premio);
+            
+            // Estilização do Selo de Ranking
+            let rankHtml = `<i class="ph ph-trophy text-sm"></i> ${myRank}º Lugar Geral`;
+            let rankEl = document.getElementById('vpRank');
+            rankEl.className = 'px-2.5 py-1 border rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm';
+            
+            if (myRank === 1) {
+                rankEl.classList.add('bg-yellow-500/20', 'border-yellow-500/30', 'text-yellow-400');
+            } else if (myRank === 2) {
+                rankEl.classList.add('bg-zinc-300/20', 'border-zinc-300/30', 'text-zinc-200');
+            } else if (myRank === 3) {
+                rankEl.classList.add('bg-orange-500/20', 'border-orange-500/30', 'text-orange-400');
+            } else {
+                rankEl.classList.add('bg-zinc-700/50', 'border-zinc-600/50', 'text-zinc-300');
+                rankHtml = `<i class="ph ph-medal text-sm"></i> ${myRank}º Lugar Geral`;
+            }
+            rankEl.innerHTML = rankHtml;
+
+            // Construção da Mensagem Dinâmica
+            let msgEl = document.getElementById('vpMessage');
+            if (ranking.length > 1) {
+                if (myRank === 1) {
+                    let diff = myStats.pts - ranking[1].pts;
+                    let diffStr = Number.isInteger(diff) ? formatNumber(diff) : formatDecimal(diff);
+                    msgEl.innerHTML = `<span class="text-brand-green flex items-center gap-1"><i class="ph ph-rocket-launch"></i> Líder absoluto! <b>${diffStr} pts</b> à frente do 2º lugar (${ranking[1].name.split(' ')[0]}).</span>`;
+                } else {
+                    let firstPlace = ranking[0];
+                    let diff = firstPlace.pts - myStats.pts;
+                    let diffStr = Number.isInteger(diff) ? formatNumber(diff) : formatDecimal(diff);
+                    
+                    if (myRank === 2) {
+                        msgEl.innerHTML = `<span class="text-yellow-400 flex items-center gap-1"><i class="ph ph-warning-circle"></i> Quase lá! Faltam <b>${diffStr} pts</b> para alcançar o 1º lugar (${firstPlace.name.split(' ')[0]}).</span>`;
+                    } else {
+                        msgEl.innerHTML = `<span class="text-zinc-300 flex items-center gap-1"><i class="ph ph-info"></i> Faltam <b>${diffStr} pts</b> para alcançar o 1º lugar (${firstPlace.name.split(' ')[0]}).</span>`;
+                    }
+                }
+            } else {
+                msgEl.innerHTML = `<span class="text-zinc-400">Único vendedor no ranking.</span>`;
+            }
+
+            // Efetua a troca visual
+            defaultHeader.classList.add('hidden');
+            banner.classList.remove('hidden');
+        }
+
+        // --- ATUALIZAÇÃO DE INTERFACE ---
+        function updateKPIs() {
+            // 1. Atualizar KPIs do BD (Novos Cards)
+            let bdFat = 0, bdVol = 0, bdPeso = 0;
+            let cliSet = new Set();
+
+            filteredDataBD.forEach(d => {
+                bdFat += d.fat;
+                bdVol += d.vol;
+                bdPeso += d.peso;
+                if (d.cli && d.fat > 0) cliSet.add(d.cli); // Conta apenas clientes com faturamento
+            });
+
+            const tons = bdPeso / 1000;
+            const positivacaoBD = cliSet.size; // Contagem distinta de CODCLI
+            const ticketMedio = positivacaoBD > 0 ? (bdFat / positivacaoBD) : 0;
+
+            document.getElementById('kpiBdFat').innerText = formatCurrency(bdFat);
+            document.getElementById('kpiBdVol').innerText = formatNumber(bdVol) + ' Cx';
+            document.getElementById('kpiBdTons').innerText = formatDecimal(tons) + ' t';
+            document.getElementById('kpiBdTicket').innerText = formatCurrency(ticketMedio);
+
+
+            // 2. Atualizar KPIs da Tabela (Meta x Realizado)
+            let tMeta = 0, tReal = 0, tPrem = 0, tPts = 0;
+            let fMeta = 0, fReal = 0, fPrem = 0, fPts = 0;
+            let sMeta = 0, sReal = 0, sPrem = 0, sPts = 0;
+            let pMeta = 0, pReal = 0, pPrem = 0, pPts = 0;
+            let aMeta = 0, aReal = 0, aPrem = 0, aPts = 0;
+            let skuMeta = 0, skuReal = 0, skuPrem = 0, skuPts = 0;
+            let lMeta = 0, lReal = 0, lPrem = 0, lPts = 0;
+            
+            filteredData.forEach(d => {
+                tMeta += d.metaPDB; tReal += d.realPDB; tPrem += d.premPDB; tPts += d.ptsPDB;
+                fMeta += d.metaFoods; fReal += d.realFoods; fPrem += d.premFoods; fPts += d.ptsFoods;
+                sMeta += d.metaSalty; sReal += d.realSalty; sPrem += d.premSalty; sPts += d.ptsSalty;
+                pMeta += d.metaPos; pReal += d.realPos; pPrem += d.premPos; pPts += d.ptsPos;
+                aMeta += d.metaAcel; aReal += d.realAcel; aPrem += d.premAcel; aPts += d.ptsAcel;
+                skuMeta += d.metaSKU; skuReal += d.realSKU; skuPrem += d.premSKU; skuPts += d.ptsSKU;
+                lMeta += d.metaLoja; lReal += d.realLoja; lPrem += d.premLoja; lPts += d.ptsLoja;
+            });
+
+            // Substitui o Realizado da Positivação pela contagem da aba BD (se o BD foi carregado)
+            if (appDataBD.length > 0) {
+                pReal = positivacaoBD;
+            }
+            
+            // --- NOVA LÓGICA: Calcula o Percentual do Geral de CADA Categoria (Gatilho) ---
+            // O gatilho não é afetado pelos filtros (olha sempre para a base total)
+            let g_tMeta = 0, g_tReal = 0;
+            let g_fMeta = 0, g_fReal = 0;
+            let g_sMeta = 0, g_sReal = 0;
+            let g_pMeta = 0, g_pReal = 0;
+            let g_aMeta = 0, g_aReal = 0;
+            let g_skuMeta = 0, g_skuReal = 0;
+            let g_lMeta = 0, g_lReal = 0;
+
+            appData.forEach(d => {
+                g_tMeta += d.metaPDB; g_tReal += d.realPDB;
+                g_fMeta += d.metaFoods; g_fReal += d.realFoods;
+                g_sMeta += d.metaSalty; g_sReal += d.realSalty;
+                g_pMeta += d.metaPos; g_pReal += d.realPos;
+                g_aMeta += d.metaAcel; g_aReal += d.realAcel;
+                g_skuMeta += d.metaSKU; g_skuReal += d.realSKU;
+                g_lMeta += d.metaLoja; g_lReal += d.realLoja;
+            });
+
+            if (appDataBD.length > 0) {
+                let globalCliSet = new Set();
+                appDataBD.forEach(d => {
+                    if (d.cli && d.fat > 0) globalCliSet.add(d.cli);
+                });
+                g_pReal = globalCliSet.size;
+            }
+
+            const renderGatilho = (meta, real, elId) => {
+                let percRaw = meta > 0 ? ((real / meta) * 100) : 0;
+                let perc = percRaw.toFixed(1);
+                const el = document.getElementById(elId);
+                if(el) {
+                    if(percRaw >= 100) {
+                        el.innerHTML = `<span class="flex items-center justify-center gap-1 text-brand-green bg-brand-green/10 px-2 py-1 rounded text-xs font-semibold" title="Premiação Liberada!"><i class="ph ph-lock-key-open"></i> ${perc}%</span>`;
+                    } else {
+                        el.innerHTML = `<span class="flex items-center justify-center gap-1 text-zinc-400 bg-zinc-800/50 px-2 py-1 rounded text-xs font-semibold" title="Falta bater a Meta Geral para liberar"><i class="ph ph-lock-key"></i> ${perc}%</span>`;
+                    }
+                }
+            };
+
+            renderGatilho(g_tMeta, g_tReal, 'kpiUnlockTotal');
+            renderGatilho(g_fMeta, g_fReal, 'kpiUnlockFoods');
+            renderGatilho(g_sMeta, g_sReal, 'kpiUnlockSalty');
+            renderGatilho(g_pMeta, g_pReal, 'kpiUnlockPos');
+            renderGatilho(g_aMeta, g_aReal, 'kpiUnlockAcel');
+            renderGatilho(g_skuMeta, g_skuReal, 'kpiUnlockSKU');
+            renderGatilho(g_lMeta, g_lReal, 'kpiUnlockLoja');
+
+
+            // --- FIM DA LÓGICA DO GATILHO ---
+            
+            // Variável pTotal corrigida e calculada novamente para uso individual
+            let pTotal = tMeta > 0 ? ((tReal/tMeta)*100).toFixed(1) : 0;
+
+            document.getElementById('kpiTotalMeta').innerText = formatCurrency(tMeta);
+            document.getElementById('kpiTotalRealizado').innerText = formatCurrency(tReal);
+            document.getElementById('kpiTotalPremio').innerText = formatCurrency(tPrem);
+            document.getElementById('kpiTotalPts').innerText = formatNumber(tPts);
+            updateBadge('kpiTotalPercent', pTotal);
+
+            document.getElementById('kpiFoodsMeta').innerText = formatCurrency(fMeta);
+            document.getElementById('kpiFoodsRealizado').innerText = formatCurrency(fReal);
+            document.getElementById('kpiFoodsPremio').innerText = formatCurrency(fPrem);
+            document.getElementById('kpiFoodsPts').innerText = formatNumber(fPts);
+            updateBadge('kpiFoodsPercent', fMeta > 0 ? ((fReal/fMeta)*100).toFixed(1) : 0);
+
+            document.getElementById('kpiSaltyMeta').innerText = formatCurrency(sMeta);
+            document.getElementById('kpiSaltyRealizado').innerText = formatCurrency(sReal);
+            document.getElementById('kpiSaltyPremio').innerText = formatCurrency(sPrem);
+            document.getElementById('kpiSaltyPts').innerText = formatNumber(sPts);
+            updateBadge('kpiSaltyPercent', sMeta > 0 ? ((sReal/sMeta)*100).toFixed(1) : 0, true);
+
+            document.getElementById('kpiPosMeta').innerText = formatNumber(pMeta);
+            document.getElementById('kpiPosRealizado').innerText = formatNumber(pReal);
+            document.getElementById('kpiPosPremio').innerText = formatCurrency(pPrem);
+            document.getElementById('kpiPosPts').innerText = formatNumber(pPts);
+            updateBadge('kpiPosPercent', pMeta > 0 ? ((pReal/pMeta)*100).toFixed(1) : 0, true);
+            
+            // Atualiza o novo Card de Positivação no Topo
+            document.getElementById('kpiTopPos').innerText = formatNumber(pReal);
+
+            document.getElementById('kpiAcelMeta').innerText = formatNumber(aMeta);
+            document.getElementById('kpiAcelRealizado').innerText = formatNumber(aReal);
+            document.getElementById('kpiAcelPremio').innerText = formatCurrency(aPrem);
+            document.getElementById('kpiAcelPts').innerText = formatNumber(aPts);
+            updateBadge('kpiAcelPercent', aMeta > 0 ? ((aReal/aMeta)*100).toFixed(1) : 0, true);
+
+            document.getElementById('kpiSKUMeta').innerText = formatNumber(skuMeta);
+            document.getElementById('kpiSKURealizado').innerText = formatDecimal(skuReal);
+            document.getElementById('kpiSKUPremio').innerText = formatCurrency(skuPrem);
+            document.getElementById('kpiSKUPts').innerText = formatDecimal(skuPts);
+            updateBadge('kpiSKUPercent', skuMeta > 0 ? ((skuReal/skuMeta)*100).toFixed(1) : 0, true);
+
+            document.getElementById('kpiLojaMeta').innerText = formatNumber(lMeta);
+            document.getElementById('kpiLojaRealizado').innerText = formatNumber(lReal);
+            document.getElementById('kpiLojaPremio').innerText = formatCurrency(lPrem);
+            document.getElementById('kpiLojaPts').innerText = formatNumber(lPts);
+            updateBadge('kpiLojaPercent', lMeta > 0 ? ((lReal/lMeta)*100).toFixed(1) : 0, true);
+        }
+
+        function updateBadge(elementId, value, strictColors = false) {
+            const el = document.getElementById(elementId);
+            el.innerText = value + '%';
+            
+            el.className = 'px-2 py-0.5 rounded text-xs font-semibold';
+            
+            if (value >= 100) {
+                el.classList.add('text-brand-green', 'bg-brand-green/10');
+            } else if (value >= 90) {
+                el.classList.add('text-yellow-500', 'bg-yellow-500/10');
+            } else {
+                el.classList.add('text-brand-red', 'bg-brand-red/10');
+            }
+        }
+
+        // --- RENDERIZAÇÃO DOS GRÁFICOS ---
+        function renderCharts() {
+            let vends = [...filteredData].sort((a, b) => {
+                let percA = a.metaPDB > 0 ? a.realPDB / a.metaPDB : 0;
+                let percB = b.metaPDB > 0 ? b.realPDB / b.metaPDB : 0;
+                return percB - percA;
+            }).slice(0, 5); 
+
+            const vendLabels = vends.map(v => v.vendedor.split(' ')[0] + ' ' + (v.vendedor.split(' ')[1] || ''));
+            const vendData = vends.map(v => v.metaPDB > 0 ? ((v.realPDB/v.metaPDB)*100).toFixed(1) : 0);
+
+            if(chartVendedoresInst) chartVendedoresInst.destroy();
+            chartVendedoresInst = new Chart(document.getElementById('chartVendedores'), {
+                type: 'bar',
+                data: {
+                    labels: vendLabels,
+                    datasets: [{
+                        data: vendData,
+                        backgroundColor: '#8b5cf6', 
+                        borderRadius: 6,
+                        barThickness: 24
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.raw + '%' } } },
+                    scales: {
+                        x: { min: 80, max: 110, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+
+            let sumSalty = 0, sumFoods = 0;
+            filteredData.forEach(d => { sumSalty += d.realSalty; sumFoods += d.realFoods; });
+
+            if(chartMixInst) chartMixInst.destroy();
+            chartMixInst = new Chart(document.getElementById('chartMix'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Salty', 'Foods'],
+                    datasets: [{
+                        data: [sumSalty, sumFoods],
+                        backgroundColor: ['#3b82f6', '#10b981'], 
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '75%',
+                    plugins: { legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } } }
+                }
+            });
+
+            let supMap = {};
+            filteredData.forEach(d => {
+                if(!supMap[d.supervisor]) supMap[d.supervisor] = { meta: 0, real: 0 };
+                supMap[d.supervisor].meta += d.metaPDB;
+                supMap[d.supervisor].real += d.realPDB;
+            });
+
+            let sups = Object.keys(supMap).map(s => {
+                return { 
+                    name: s, 
+                    perc: supMap[s].meta > 0 ? ((supMap[s].real / supMap[s].meta)*100).toFixed(1) : 0 
+                };
+            }).sort((a,b) => b.perc - a.perc);
+
+            const supLabels = sups.map(s => s.name);
+            const supData = sups.map(s => s.perc);
+            const supColors = supData.map(v => v >= 100 ? '#10b981' : (v >= 95 ? '#8b5cf6' : '#ef4444'));
+
+            if(chartSupervisoresInst) chartSupervisoresInst.destroy();
+            chartSupervisoresInst = new Chart(document.getElementById('chartSupervisores'), {
+                type: 'bar',
+                data: {
+                    labels: supLabels,
+                    datasets: [{
+                        data: supData,
+                        backgroundColor: supColors,
+                        borderRadius: 6,
+                        barThickness: 40
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.raw + '%' } } },
+                    scales: {
+                        y: { min: 80, max: 110, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // --- LÓGICA DO MODAL DE RANKING ---
+        function openRankingModal() {
+            document.getElementById('rankingModal').classList.remove('hidden');
+            populateRankingModal();
+        }
+
+        function closeRankingModal() {
+            document.getElementById('rankingModal').classList.add('hidden');
+        }
+
+        // Fechar ao clicar fora do modal
+        document.getElementById('rankingModal').addEventListener('click', function(e) {
+            if (e.target === this) closeRankingModal();
+        });
+
+        function populateRankingModal() {
+            const tbody = document.getElementById('rankingModalBody');
+            tbody.innerHTML = '';
+
+            // Calcular o total de pontos para cada vendedor filtrado
+            let rankingData = filteredData.map(d => {
+                let totalPts = (d.ptsPDB || 0) + (d.ptsSalty || 0) + (d.ptsFoods || 0) + 
+                               (d.ptsPos || 0) + (d.ptsAcel || 0) + (d.ptsSKU || 0) + (d.ptsLoja || 0);
+                return { ...d, totalPts: totalPts };
+            });
+
+            // Ordenar por pontos (do maior para o menor)
+            rankingData.sort((a, b) => b.totalPts - a.totalPts);
+
+            // Formatador local para pontos com 1 casa decimal se necessário
+            const formatPts = (val) => Number.isInteger(val) ? formatNumber(val) : formatDecimal(val);
+
+            rankingData.forEach((d, index) => {
+                let medal = '';
+                if (index === 0) medal = '<i class="ph ph-medal text-yellow-400 text-2xl drop-shadow-md"></i>';
+                else if (index === 1) medal = '<i class="ph ph-medal text-zinc-300 text-xl drop-shadow-md"></i>';
+                else if (index === 2) medal = '<i class="ph ph-medal text-amber-600 text-xl drop-shadow-md"></i>';
+                else medal = `<span class="text-zinc-500 font-bold text-sm">${index + 1}º</span>`;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-zinc-800/40 transition-colors bg-white/[0.01]';
+                tr.innerHTML = `
+                    <td class="p-4 text-center border-r border-zinc-800/30">${medal}</td>
+                    <td class="p-4">
+                        <div class="font-bold text-zinc-200">${d.vendedor}</div>
+                        <div class="text-xs text-zinc-500 mt-0.5"><i class="ph ph-user text-zinc-600"></i> ${d.supervisor}</div>
+                    </td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsPDB || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsFoods || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsSalty || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsPos || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsAcel || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsSKU || 0)}</td>
+                    <td class="p-4 text-center text-zinc-300">${formatPts(d.ptsLoja || 0)}</td>
+                    <td class="p-4 text-center font-bold text-brand-purple bg-brand-purple/5 border-l border-zinc-800/50">${formatPts(d.totalPts)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            if (rankingData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="p-8 text-center text-zinc-500"><i class="ph ph-empty text-3xl mb-2"></i><br>Nenhum dado encontrado para os filtros atuais.</td></tr>';
+            }
+        }
+
+        // --- INICIALIZAÇÃO COM DADOS MOCKADOS ---
+        window.onload = () => {
+            appData = initialData;
+            appDataBD = initialDataBD;
+            updateFilterOptions();
+            applyFiltersAndRender();
+        };
+
+    </script>
+</body>
+</html>
