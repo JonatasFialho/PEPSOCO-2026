@@ -653,8 +653,8 @@
             const idxCodSup = headers.findIndex(h => h.includes('CODSUP') || h.includes('CODSUPERVISOR'));
             const idxSup = headers.findIndex(h => h.includes('SUPERVISOR') || h === 'SUP');
             const idxFat = headers.findIndex(h => h.includes('VLFAT') || h.includes('FATURAMENTO'));
-            const idxCx = headers.findIndex(h => h.includes('QTCX') || h === 'QTCX');
-            const idxUn = headers.findIndex(h => h.includes('QTUN') || h === 'QTUN');
+            const idxCx = headers.findIndex(h => h.includes('QT_CX') || h.includes('QTCX'));
+            const idxUn = headers.findIndex(h => h.includes('QT_UN') || h.includes('QTUN'));
             const idxPeso = headers.findIndex(h => h.includes('PESOBRUTO'));
             const idxCli = headers.findIndex(h => h.includes('CODCLI'));
 
