@@ -477,21 +477,6 @@
         const formatNumber = (val) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(val);
         const formatDecimal = (val) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(val);
 
-        // --- CONVERSOR ROBUSTO DE NÚMEROS (PT-BR) ---
-        const parseBRNumber = (val) => {
-            if (val === null || val === undefined || val === '') return 0;
-            if (typeof val === 'number') return val;
-            let str = String(val).trim();
-            // Se contiver vírgula, trata como formatação PT-BR (1.098,50 -> 1098.50)
-            if (str.includes(',')) {
-                str = str.replace(/\./g, '').replace(',', '.');
-            }
-            // Remove qualquer coisa que não seja dígito, ponto ou sinal de menos
-            str = str.replace(/[^\d.-]/g, '');
-            let num = parseFloat(str);
-            return isNaN(num) ? 0 : num;
-        };
-
         // --- DADOS MOCKADOS (INICIAIS PARA VISUALIZAÇÃO) ---
         const initialData = [
             { codRCA: 'V1', codSup: 'S1', vendedor: 'José Fransuir', supervisor: 'Alex (P3)', metaPDB: 3419, realPDB: 3524, premPDB: 150, ptsPDB: 10, metaSalty: 2000, realSalty: 1900, premSalty: 50, ptsSalty: 5, metaFoods: 1419, realFoods: 1624, premFoods: 80, ptsFoods: 15, metaPos: 150, realPos: 120, premPos: 20, ptsPos: 8, metaAcel: 10, realAcel: 12, premAcel: 30, ptsAcel: 5, metaSKU: 16, realSKU: 14.5, premSKU: 15, ptsSKU: 4, metaLoja: 50, realLoja: 45, premLoja: 20, ptsLoja: 6 },
@@ -568,11 +553,9 @@
             }
         });
 
-        // --- MAPEAMENTO DINÂMICO INTELIGENTE ---
         function processDataRows(rows) {
             let processed = [];
             
-            // Procura a linha de cabeçalho
             let headerRowIndex = -1;
             for(let i=0; i < Math.min(20, rows.length); i++){
                 const rowStr = rows[i].map(c => String(c).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
@@ -582,154 +565,66 @@
                 }
             }
 
-            // Posições Padrão (Fallback caso a busca dinâmica falhe)
-            let idxCodRca = 0, idxVend = 1, idxCodSup = 2, idxSup = 3;
-            let idxMetaSalty = 6, idxRealSalty = 7, idxPtsSalty = 9, idxPremSalty = 10;
-            let idxMetaFoods = 11, idxRealFoods = 12, idxPtsFoods = 14, idxPremFoods = 15;
-            let idxMetaPDB = 16, idxRealPDB = 17, idxPtsPDB = 19, idxPremPDB = 20;
-            let idxMetaPos = 22, idxRealPos = 23, idxPtsPos = 25, idxPremPos = 26;
-            let idxMetaAcel = 27, idxRealAcel = 28, idxPtsAcel = 30, idxPremAcel = 31;
-            let idxMetaSKU = 32, idxRealSKU = 33, idxPtsSKU = 35, idxPremSKU = 36;
-            let idxMetaLoja = 37, idxRealLoja = 38, idxPtsLoja = 41, idxPremLoja = 42;
-
+            let idxCodRca = 0; 
+            let idxCodSup = 2; 
             if (headerRowIndex > -1) {
-                let headers = rows[headerRowIndex].map(h => String(h).toUpperCase());
-                let superHeaders = headerRowIndex > 0 ? rows[headerRowIndex - 1].map(h => String(h).toUpperCase()) : [];
-                
-                // Constrói um cabeçalho composto (ex: "SALTY META") para identificar células mescladas do Excel
-                let currentSuper = '';
-                let finalHeaders = headers.map((h, i) => {
-                    if (superHeaders[i] && superHeaders[i].trim() !== '') currentSuper = superHeaders[i].trim();
-                    return `${currentSuper} ${h}`.replace(/\s+/g, ' ').trim();
-                });
+                const headers = rows[headerRowIndex].map(h => String(h).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
+                let foundRca = headers.findIndex(h => h.includes('CODRCA') || h.includes('CODVEND'));
+                if (foundRca > -1) idxCodRca = foundRca;
+                let foundSup = headers.findIndex(h => h.includes('CODSUP') || h.includes('CODSUPERVISOR'));
+                if (foundSup > -1) idxCodSup = foundSup;
+            }
 
-                const findCol = (keywords) => finalHeaders.findIndex(h => keywords.every(k => h.includes(k)));
-
-                let fCodRca = findCol(['CODRCA']); if(fCodRca === -1) fCodRca = findCol(['CODVEND']);
-                if (fCodRca > -1) idxCodRca = fCodRca;
-
-                let fCodSup = findCol(['CODSUP']); 
-                if (fCodSup > -1) idxCodSup = fCodSup;
-
-                let fVend = findCol(['VENDEDOR']); if (fVend > -1) idxVend = fVend;
-                let fSup = findCol(['SUPERVISOR']); if (fSup > -1) idxSup = fSup;
-
-                // Busca as posições exatas dinamicamente, impedindo a leitura de colunas erradas (como códigos de barras ou CNPJ)
-                let fMetaSalty = findCol(['META', 'SALTY']);
-                if (fMetaSalty > -1) {
-                    idxMetaSalty = fMetaSalty;
-                    idxRealSalty = findCol(['REAL', 'SALTY']); if(idxRealSalty===-1) idxRealSalty = idxMetaSalty+1;
-                    idxPtsSalty = findCol(['PT', 'SALTY']); if(idxPtsSalty===-1) idxPtsSalty = idxMetaSalty+3;
-                    idxPremSalty = findCol(['PREM', 'SALTY']); if(idxPremSalty===-1) idxPremSalty = idxMetaSalty+4;
-                }
-
-                let fMetaFoods = findCol(['META', 'FOODS']);
-                if (fMetaFoods > -1) {
-                    idxMetaFoods = fMetaFoods;
-                    idxRealFoods = findCol(['REAL', 'FOODS']); if(idxRealFoods===-1) idxRealFoods = idxMetaFoods+1;
-                    idxPtsFoods = findCol(['PT', 'FOODS']); if(idxPtsFoods===-1) idxPtsFoods = idxMetaFoods+3;
-                    idxPremFoods = findCol(['PREM', 'FOODS']); if(idxPremFoods===-1) idxPremFoods = idxMetaFoods+4;
-                }
-
-                let fMetaPDB = findCol(['META', 'PDB']);
-                if (fMetaPDB > -1) {
-                    idxMetaPDB = fMetaPDB;
-                    idxRealPDB = findCol(['REAL', 'PDB']); if(idxRealPDB===-1) idxRealPDB = idxMetaPDB+1;
-                    idxPtsPDB = findCol(['PT', 'PDB']); if(idxPtsPDB===-1) idxPtsPDB = idxMetaPDB+3;
-                    idxPremPDB = findCol(['PREM', 'PDB']); if(idxPremPDB===-1) idxPremPDB = idxMetaPDB+4;
-                }
-
-                let fMetaPos = findCol(['META', 'POS']);
-                if (fMetaPos > -1) {
-                    idxMetaPos = fMetaPos;
-                    idxRealPos = findCol(['REAL', 'POS']); if(idxRealPos===-1) idxRealPos = idxMetaPos+1;
-                    idxPtsPos = findCol(['PT', 'POS']); if(idxPtsPos===-1) idxPtsPos = idxMetaPos+3;
-                    idxPremPos = findCol(['PREM', 'POS']); if(idxPremPos===-1) idxPremPos = idxMetaPos+4;
-                }
-
-                let fMetaAcel = findCol(['META', 'ACEL']);
-                if (fMetaAcel > -1) {
-                    idxMetaAcel = fMetaAcel;
-                    idxRealAcel = findCol(['REAL', 'ACEL']); if(idxRealAcel===-1) idxRealAcel = idxMetaAcel+1;
-                    idxPtsAcel = findCol(['PT', 'ACEL']); if(idxPtsAcel===-1) idxPtsAcel = idxMetaAcel+3;
-                    idxPremAcel = findCol(['PREM', 'ACEL']); if(idxPremAcel===-1) idxPremAcel = idxMetaAcel+4;
-                }
-
-                let fMetaSKU = findCol(['META', 'SKU']);
-                if (fMetaSKU > -1) {
-                    idxMetaSKU = fMetaSKU;
-                    idxRealSKU = findCol(['REAL', 'SKU']); if(idxRealSKU===-1) idxRealSKU = idxMetaSKU+1;
-                    idxPtsSKU = findCol(['PT', 'SKU']); if(idxPtsSKU===-1) idxPtsSKU = idxMetaSKU+3;
-                    idxPremSKU = findCol(['PREM', 'SKU']); if(idxPremSKU===-1) idxPremSKU = idxMetaSKU+4;
-                }
-
-                let fMetaLoja = findCol(['META', 'LOJA']);
-                if (fMetaLoja > -1) {
-                    idxMetaLoja = fMetaLoja;
-                    idxRealLoja = findCol(['REAL', 'LOJA']); if(idxRealLoja===-1) idxRealLoja = idxMetaLoja+1;
-                    idxPtsLoja = findCol(['PT', 'LOJA']); if(idxPtsLoja===-1) idxPtsLoja = idxMetaLoja+3;
-                    idxPremLoja = findCol(['PREM', 'LOJA']); if(idxPremLoja===-1) idxPremLoja = idxMetaLoja+4;
-                }
-                
-                // Compensação automática de deslocamento de colunas caso a leitura dinâmica falhe
-                if (fMetaSalty === -1 && idxVend > 1) {
-                    let shift = idxVend - 1;
-                    idxMetaSalty += shift; idxRealSalty += shift; idxPtsSalty += shift; idxPremSalty += shift;
-                    idxMetaFoods += shift; idxRealFoods += shift; idxPtsFoods += shift; idxPremFoods += shift;
-                    idxMetaPDB += shift; idxRealPDB += shift; idxPtsPDB += shift; idxPremPDB += shift;
-                    idxMetaPos += shift; idxRealPos += shift; idxPtsPos += shift; idxPremPos += shift;
-                    idxMetaAcel += shift; idxRealAcel += shift; idxPtsAcel += shift; idxPremAcel += shift;
-                    idxMetaSKU += shift; idxRealSKU += shift; idxPtsSKU += shift; idxPremSKU += shift;
-                    idxMetaLoja += shift; idxRealLoja += shift; idxPtsLoja += shift; idxPremLoja += shift;
+            let startRow = 0;
+            for(let i=0; i < rows.length; i++){
+                if(rows[i][1] && String(rows[i][1]).trim() !== 'VENDEDOR' && String(rows[i][1]).trim() !== 'HOTBEL' && String(rows[i][1]).trim() !== '' && rows[i][3]) {
+                    startRow = i;
+                    break;
                 }
             }
 
-            let startRow = headerRowIndex > -1 ? headerRowIndex + 1 : 0;
             for (let i = startRow; i < rows.length; i++) {
                 const row = rows[i];
-                if (!row || row.length === 0) continue;
-                
                 const codRCA = row[idxCodRca] ? String(row[idxCodRca]).trim() : '';
-                const vendedor = row[idxVend] ? String(row[idxVend]).trim() : '';
+                const vendedor = row[1] ? String(row[1]).trim() : '';
                 const codSup = row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
-                const supervisor = row[idxSup] ? String(row[idxSup]).trim() : '';
+                const supervisor = row[3] ? String(row[3]).trim() : '';
                 
-                if (!vendedor || vendedor === 'HOTBEL' || vendedor.includes('VENDEDOR')) continue;
+                if (!vendedor || vendedor === 'HOTBEL' || vendedor === 'VENDEDOR') continue;
 
-                // Usa o parseBRNumber em vez do parseFloat simples
                 processed.push({
                     codRCA: codRCA,
                     vendedor: vendedor,
                     codSup: codSup,
                     supervisor: supervisor,
-                    metaSalty: parseBRNumber(row[idxMetaSalty]),
-                    realSalty: parseBRNumber(row[idxRealSalty]),
-                    ptsSalty: parseBRNumber(row[idxPtsSalty]),
-                    premSalty: parseBRNumber(row[idxPremSalty]),
-                    metaFoods: parseBRNumber(row[idxMetaFoods]),
-                    realFoods: parseBRNumber(row[idxRealFoods]),
-                    ptsFoods: parseBRNumber(row[idxPtsFoods]),
-                    premFoods: parseBRNumber(row[idxPremFoods]),
-                    metaPDB: parseBRNumber(row[idxMetaPDB]),
-                    realPDB: parseBRNumber(row[idxRealPDB]),
-                    ptsPDB: parseBRNumber(row[idxPtsPDB]),
-                    premPDB: parseBRNumber(row[idxPremPDB]),
-                    metaPos: parseBRNumber(row[idxMetaPos]),
-                    realPos: parseBRNumber(row[idxRealPos]),
-                    ptsPos: parseBRNumber(row[idxPtsPos]),
-                    premPos: parseBRNumber(row[idxPremPos]),
-                    metaAcel: parseBRNumber(row[idxMetaAcel]),
-                    realAcel: parseBRNumber(row[idxRealAcel]),
-                    ptsAcel: parseBRNumber(row[idxPtsAcel]),
-                    premAcel: parseBRNumber(row[idxPremAcel]),
-                    metaSKU: parseBRNumber(row[idxMetaSKU]),
-                    realSKU: parseBRNumber(row[idxRealSKU]),
-                    ptsSKU: parseBRNumber(row[idxPtsSKU]),
-                    premSKU: parseBRNumber(row[idxPremSKU]),
-                    metaLoja: parseBRNumber(row[idxMetaLoja]),
-                    realLoja: parseBRNumber(row[idxRealLoja]),
-                    ptsLoja: parseBRNumber(row[idxPtsLoja]),
-                    premLoja: parseBRNumber(row[idxPremLoja])
+                    metaSalty: parseFloat(row[6]) || 0,
+                    realSalty: parseFloat(row[7]) || 0,
+                    ptsSalty: parseFloat(row[9]) || 0,
+                    premSalty: parseFloat(row[10]) || 0,
+                    metaFoods: parseFloat(row[11]) || 0,
+                    realFoods: parseFloat(row[12]) || 0,
+                    ptsFoods: parseFloat(row[14]) || 0,
+                    premFoods: parseFloat(row[15]) || 0,
+                    metaPDB: parseFloat(row[16]) || 0,
+                    realPDB: parseFloat(row[17]) || 0,
+                    ptsPDB: parseFloat(row[19]) || 0,
+                    premPDB: parseFloat(row[20]) || 0,
+                    metaPos: parseFloat(row[22]) || 0,
+                    realPos: parseFloat(row[23]) || 0,
+                    ptsPos: parseFloat(row[25]) || 0,
+                    premPos: parseFloat(row[26]) || 0,
+                    metaAcel: parseFloat(row[27]) || 0,
+                    realAcel: parseFloat(row[28]) || 0,
+                    ptsAcel: parseFloat(row[30]) || 0,
+                    premAcel: parseFloat(row[31]) || 0,
+                    metaSKU: parseFloat(row[32]) || 0,
+                    realSKU: parseFloat(row[33]) || 0, 
+                    ptsSKU: parseFloat(row[35]) || 0,
+                    premSKU: parseFloat(row[36]) || 0,
+                    metaLoja: parseFloat(row[37]) || 0,
+                    realLoja: parseFloat(row[38]) || parseFloat(row[40]) || 0,
+                    ptsLoja: parseFloat(row[41]) || 0,
+                    premLoja: parseFloat(row[42]) || 0
                 });
             }
 
@@ -773,17 +668,18 @@
                 if (!codRCA && !vendedor) continue;
                 if (vendedor === 'VENDEDOR') continue;
 
-                let vol = idxCx > -1 ? parseBRNumber(row[idxCx]) : NaN;
-                if(isNaN(vol) || vol === 0) vol = idxUn > -1 ? parseBRNumber(row[idxUn]) : 0;
+                let vol = idxCx > -1 ? parseFloat(row[idxCx]) : NaN;
+                if(isNaN(vol)) vol = idxUn > -1 ? parseFloat(row[idxUn]) : 0;
+                if(isNaN(vol)) vol = 0;
 
                 processed.push({
                     codRCA: codRCA,
                     vendedor: vendedor,
                     codSup: codSup,
                     supervisor: supervisor,
-                    fat: idxFat > -1 ? parseBRNumber(row[idxFat]) : 0,
+                    fat: idxFat > -1 ? (parseFloat(row[idxFat]) || 0) : 0,
                     vol: vol,
-                    peso: idxPeso > -1 ? parseBRNumber(row[idxPeso]) : 0,
+                    peso: idxPeso > -1 ? (parseFloat(row[idxPeso]) || 0) : 0,
                     cli: idxCli > -1 && row[idxCli] ? String(row[idxCli]).trim() : ''
                 });
             }
@@ -986,15 +882,7 @@
                             // Aplicar estilo extra de topo quando muda o supervisor
                             doc.setDrawColor(139, 92, 246);
                             doc.setLineWidth(1);
-                            
-                            const startX = data.cell.x;
-                            const startY = data.cell.y;
-                            const pageWidth = doc.internal.pageSize.getWidth ? doc.internal.pageSize.getWidth() : doc.internal.pageSize.width;
-                            const endX = pageWidth - (data.settings.margin.right || 14);
-                            
-                            if (typeof startX === 'number' && typeof startY === 'number' && typeof endX === 'number' && !isNaN(startX) && !isNaN(startY) && !isNaN(endX)) {
-                                doc.line(startX, startY, endX, startY);
-                            }
+                            doc.line(data.cell.x, data.cell.y, data.cell.x + data.table.width, data.cell.y);
                         }
                         lastSup = currentSup;
                     }
