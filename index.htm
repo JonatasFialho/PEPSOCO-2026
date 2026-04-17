@@ -27,10 +27,12 @@
         }
     </script>
 
-    <!-- Chart.js & PapaParse & SheetJS -->
+    <!-- Chart.js & PapaParse & SheetJS & jsPDF -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         body { background-color: #0f0f11; color: #e4e4e7; overflow: hidden; }
@@ -98,7 +100,22 @@
             </div>
         </div>
 
-        <div class="mt-auto pt-4 text-[10px] text-zinc-600 text-center">
+        <!-- NOVO: Seção de Exportação -->
+        <div class="mt-6 mb-2 border-t border-zinc-800 pt-5">
+            <h2 class="text-[11px] font-semibold text-zinc-400 mb-3 uppercase tracking-wider flex items-center gap-2">
+                <i class="ph ph-download-simple"></i> Exportar Relatório
+            </h2>
+            <div class="flex gap-2">
+                <button onclick="exportCSV()" class="flex-1 bg-dark-800 border border-zinc-700 hover:border-brand-purple hover:bg-brand-purple/10 text-zinc-300 hover:text-brand-purple text-xs font-semibold py-2 rounded-lg transition-all flex justify-center items-center gap-1.5 cursor-pointer shadow-sm">
+                    <i class="ph ph-file-csv text-base"></i> CSV
+                </button>
+                <button onclick="exportPDF()" class="flex-1 bg-dark-800 border border-zinc-700 hover:border-brand-red hover:bg-brand-red/10 text-zinc-300 hover:text-brand-red text-xs font-semibold py-2 rounded-lg transition-all flex justify-center items-center gap-1.5 cursor-pointer shadow-sm">
+                    <i class="ph ph-file-pdf text-base"></i> PDF
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-auto pt-4 text-[10px] text-zinc-600 text-center border-t border-zinc-800">
             Inteligência Comercial
         </div>
     </aside>
@@ -421,17 +438,13 @@
             const icon = document.getElementById('sidebarIcon');
             const btn = document.getElementById('sidebarToggleBtn');
             
-            // Oculta a barra lateral com margem negativa (w-60 = 240px)
             sidebar.classList.toggle('-ml-60');
             
             if(sidebar.classList.contains('-ml-60')) {
-                // Estado Oculto
                 icon.classList.remove('ph-caret-left');
                 icon.classList.add('ph-caret-right');
-                // Empurra o botão ligeiramente para a direita para permanecer totalmente visível
                 btn.classList.add('translate-x-4');
             } else {
-                // Estado Visível
                 icon.classList.remove('ph-caret-right');
                 icon.classList.add('ph-caret-left');
                 btn.classList.remove('translate-x-4');
@@ -463,6 +476,21 @@
         const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(val);
         const formatDecimal = (val) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(val);
+
+        // --- CONVERSOR ROBUSTO DE NÚMEROS (PT-BR) ---
+        const parseBRNumber = (val) => {
+            if (val === null || val === undefined || val === '') return 0;
+            if (typeof val === 'number') return val;
+            let str = String(val).trim();
+            // Se contiver vírgula, trata como formatação PT-BR (1.098,50 -> 1098.50)
+            if (str.includes(',')) {
+                str = str.replace(/\./g, '').replace(',', '.');
+            }
+            // Remove qualquer coisa que não seja dígito, ponto ou sinal de menos
+            str = str.replace(/[^\d.-]/g, '');
+            let num = parseFloat(str);
+            return isNaN(num) ? 0 : num;
+        };
 
         // --- DADOS MOCKADOS (INICIAIS PARA VISUALIZAÇÃO) ---
         const initialData = [
@@ -496,7 +524,6 @@
                     skipEmptyLines: true,
                     complete: function(results) {
                         const rows = results.data;
-                        // Tenta detetar se o CSV é do BD ou da Meta
                         const isBD = rows.slice(0, 15).some(r => r.includes('VLFAT') || r.includes('PESOBRUTO'));
                         if (isBD) {
                             processBDRows(rows);
@@ -513,7 +540,6 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
                     
-                    // 1. Processar Aba META REALIZADO
                     let targetMetaSheet = workbook.SheetNames.find(name => name.trim().toUpperCase().includes('META REALIZADO'));
                     if (targetMetaSheet) {
                         const sheetMeta = workbook.Sheets[targetMetaSheet];
@@ -521,22 +547,16 @@
                         processDataRows(rowsMeta);
                     }
 
-                    // 2. Processar Aba BD
                     let targetBDSheet = workbook.SheetNames.find(name => {
                         let upper = name.trim().toUpperCase();
                         return upper === 'BD' || upper.includes('BD INVOLVES') || upper === 'BD ';
                     });
-                    if (!targetBDSheet) {
-                        // Fallback genérico para encontrar a aba de BD
-                        targetBDSheet = workbook.SheetNames.find(name => name.trim().toUpperCase().includes('BD'));
-                    }
+                    if (!targetBDSheet) targetBDSheet = workbook.SheetNames.find(name => name.trim().toUpperCase().includes('BD'));
 
                     if (targetBDSheet) {
                         const sheetBD = workbook.Sheets[targetBDSheet];
                         const rowsBD = XLSX.utils.sheet_to_json(sheetBD, {header: 1, defval: ""});
                         processBDRows(rowsBD);
-                    } else {
-                        console.warn("Aba BD não encontrada no ficheiro Excel.");
                     }
 
                     if(appData.length > 0 || appDataBD.length > 0) {
@@ -545,15 +565,14 @@
                     }
                 };
                 reader.readAsArrayBuffer(file);
-            } else {
-                alert("Formato de ficheiro não suportado. Por favor, envie um ficheiro .csv ou .xlsx.");
             }
         });
 
+        // --- MAPEAMENTO DINÂMICO INTELIGENTE ---
         function processDataRows(rows) {
             let processed = [];
             
-            // Busca dinâmica das colunas de ID na aba Meta para evitar erros de índice fixo
+            // Procura a linha de cabeçalho
             let headerRowIndex = -1;
             for(let i=0; i < Math.min(20, rows.length); i++){
                 const rowStr = rows[i].map(c => String(c).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
@@ -563,66 +582,154 @@
                 }
             }
 
-            let idxCodRca = 0; // fallback padrão
-            let idxCodSup = 2; // fallback padrão
-            if (headerRowIndex > -1) {
-                const headers = rows[headerRowIndex].map(h => String(h).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
-                let foundRca = headers.findIndex(h => h.includes('CODRCA') || h.includes('CODVEND'));
-                if (foundRca > -1) idxCodRca = foundRca;
-                let foundSup = headers.findIndex(h => h.includes('CODSUP') || h.includes('CODSUPERVISOR'));
-                if (foundSup > -1) idxCodSup = foundSup;
-            }
+            // Posições Padrão (Fallback caso a busca dinâmica falhe)
+            let idxCodRca = 0, idxVend = 1, idxCodSup = 2, idxSup = 3;
+            let idxMetaSalty = 6, idxRealSalty = 7, idxPtsSalty = 9, idxPremSalty = 10;
+            let idxMetaFoods = 11, idxRealFoods = 12, idxPtsFoods = 14, idxPremFoods = 15;
+            let idxMetaPDB = 16, idxRealPDB = 17, idxPtsPDB = 19, idxPremPDB = 20;
+            let idxMetaPos = 22, idxRealPos = 23, idxPtsPos = 25, idxPremPos = 26;
+            let idxMetaAcel = 27, idxRealAcel = 28, idxPtsAcel = 30, idxPremAcel = 31;
+            let idxMetaSKU = 32, idxRealSKU = 33, idxPtsSKU = 35, idxPremSKU = 36;
+            let idxMetaLoja = 37, idxRealLoja = 38, idxPtsLoja = 41, idxPremLoja = 42;
 
-            let startRow = 0;
-            for(let i=0; i < rows.length; i++){
-                if(rows[i][1] && String(rows[i][1]).trim() !== 'VENDEDOR' && String(rows[i][1]).trim() !== 'HOTBEL' && String(rows[i][1]).trim() !== '' && rows[i][3]) {
-                    startRow = i;
-                    break;
+            if (headerRowIndex > -1) {
+                let headers = rows[headerRowIndex].map(h => String(h).toUpperCase());
+                let superHeaders = headerRowIndex > 0 ? rows[headerRowIndex - 1].map(h => String(h).toUpperCase()) : [];
+                
+                // Constrói um cabeçalho composto (ex: "SALTY META") para identificar células mescladas do Excel
+                let currentSuper = '';
+                let finalHeaders = headers.map((h, i) => {
+                    if (superHeaders[i] && superHeaders[i].trim() !== '') currentSuper = superHeaders[i].trim();
+                    return `${currentSuper} ${h}`.replace(/\s+/g, ' ').trim();
+                });
+
+                const findCol = (keywords) => finalHeaders.findIndex(h => keywords.every(k => h.includes(k)));
+
+                let fCodRca = findCol(['CODRCA']); if(fCodRca === -1) fCodRca = findCol(['CODVEND']);
+                if (fCodRca > -1) idxCodRca = fCodRca;
+
+                let fCodSup = findCol(['CODSUP']); 
+                if (fCodSup > -1) idxCodSup = fCodSup;
+
+                let fVend = findCol(['VENDEDOR']); if (fVend > -1) idxVend = fVend;
+                let fSup = findCol(['SUPERVISOR']); if (fSup > -1) idxSup = fSup;
+
+                // Busca as posições exatas dinamicamente, impedindo a leitura de colunas erradas (como códigos de barras ou CNPJ)
+                let fMetaSalty = findCol(['META', 'SALTY']);
+                if (fMetaSalty > -1) {
+                    idxMetaSalty = fMetaSalty;
+                    idxRealSalty = findCol(['REAL', 'SALTY']); if(idxRealSalty===-1) idxRealSalty = idxMetaSalty+1;
+                    idxPtsSalty = findCol(['PT', 'SALTY']); if(idxPtsSalty===-1) idxPtsSalty = idxMetaSalty+3;
+                    idxPremSalty = findCol(['PREM', 'SALTY']); if(idxPremSalty===-1) idxPremSalty = idxMetaSalty+4;
+                }
+
+                let fMetaFoods = findCol(['META', 'FOODS']);
+                if (fMetaFoods > -1) {
+                    idxMetaFoods = fMetaFoods;
+                    idxRealFoods = findCol(['REAL', 'FOODS']); if(idxRealFoods===-1) idxRealFoods = idxMetaFoods+1;
+                    idxPtsFoods = findCol(['PT', 'FOODS']); if(idxPtsFoods===-1) idxPtsFoods = idxMetaFoods+3;
+                    idxPremFoods = findCol(['PREM', 'FOODS']); if(idxPremFoods===-1) idxPremFoods = idxMetaFoods+4;
+                }
+
+                let fMetaPDB = findCol(['META', 'PDB']);
+                if (fMetaPDB > -1) {
+                    idxMetaPDB = fMetaPDB;
+                    idxRealPDB = findCol(['REAL', 'PDB']); if(idxRealPDB===-1) idxRealPDB = idxMetaPDB+1;
+                    idxPtsPDB = findCol(['PT', 'PDB']); if(idxPtsPDB===-1) idxPtsPDB = idxMetaPDB+3;
+                    idxPremPDB = findCol(['PREM', 'PDB']); if(idxPremPDB===-1) idxPremPDB = idxMetaPDB+4;
+                }
+
+                let fMetaPos = findCol(['META', 'POS']);
+                if (fMetaPos > -1) {
+                    idxMetaPos = fMetaPos;
+                    idxRealPos = findCol(['REAL', 'POS']); if(idxRealPos===-1) idxRealPos = idxMetaPos+1;
+                    idxPtsPos = findCol(['PT', 'POS']); if(idxPtsPos===-1) idxPtsPos = idxMetaPos+3;
+                    idxPremPos = findCol(['PREM', 'POS']); if(idxPremPos===-1) idxPremPos = idxMetaPos+4;
+                }
+
+                let fMetaAcel = findCol(['META', 'ACEL']);
+                if (fMetaAcel > -1) {
+                    idxMetaAcel = fMetaAcel;
+                    idxRealAcel = findCol(['REAL', 'ACEL']); if(idxRealAcel===-1) idxRealAcel = idxMetaAcel+1;
+                    idxPtsAcel = findCol(['PT', 'ACEL']); if(idxPtsAcel===-1) idxPtsAcel = idxMetaAcel+3;
+                    idxPremAcel = findCol(['PREM', 'ACEL']); if(idxPremAcel===-1) idxPremAcel = idxMetaAcel+4;
+                }
+
+                let fMetaSKU = findCol(['META', 'SKU']);
+                if (fMetaSKU > -1) {
+                    idxMetaSKU = fMetaSKU;
+                    idxRealSKU = findCol(['REAL', 'SKU']); if(idxRealSKU===-1) idxRealSKU = idxMetaSKU+1;
+                    idxPtsSKU = findCol(['PT', 'SKU']); if(idxPtsSKU===-1) idxPtsSKU = idxMetaSKU+3;
+                    idxPremSKU = findCol(['PREM', 'SKU']); if(idxPremSKU===-1) idxPremSKU = idxMetaSKU+4;
+                }
+
+                let fMetaLoja = findCol(['META', 'LOJA']);
+                if (fMetaLoja > -1) {
+                    idxMetaLoja = fMetaLoja;
+                    idxRealLoja = findCol(['REAL', 'LOJA']); if(idxRealLoja===-1) idxRealLoja = idxMetaLoja+1;
+                    idxPtsLoja = findCol(['PT', 'LOJA']); if(idxPtsLoja===-1) idxPtsLoja = idxMetaLoja+3;
+                    idxPremLoja = findCol(['PREM', 'LOJA']); if(idxPremLoja===-1) idxPremLoja = idxMetaLoja+4;
+                }
+                
+                // Compensação automática de deslocamento de colunas caso a leitura dinâmica falhe
+                if (fMetaSalty === -1 && idxVend > 1) {
+                    let shift = idxVend - 1;
+                    idxMetaSalty += shift; idxRealSalty += shift; idxPtsSalty += shift; idxPremSalty += shift;
+                    idxMetaFoods += shift; idxRealFoods += shift; idxPtsFoods += shift; idxPremFoods += shift;
+                    idxMetaPDB += shift; idxRealPDB += shift; idxPtsPDB += shift; idxPremPDB += shift;
+                    idxMetaPos += shift; idxRealPos += shift; idxPtsPos += shift; idxPremPos += shift;
+                    idxMetaAcel += shift; idxRealAcel += shift; idxPtsAcel += shift; idxPremAcel += shift;
+                    idxMetaSKU += shift; idxRealSKU += shift; idxPtsSKU += shift; idxPremSKU += shift;
+                    idxMetaLoja += shift; idxRealLoja += shift; idxPtsLoja += shift; idxPremLoja += shift;
                 }
             }
 
+            let startRow = headerRowIndex > -1 ? headerRowIndex + 1 : 0;
             for (let i = startRow; i < rows.length; i++) {
                 const row = rows[i];
-                const codRCA = row[idxCodRca] ? String(row[idxCodRca]).trim() : '';
-                const vendedor = row[1] ? String(row[1]).trim() : '';
-                const codSup = row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
-                const supervisor = row[3] ? String(row[3]).trim() : '';
+                if (!row || row.length === 0) continue;
                 
-                if (!vendedor || vendedor === 'HOTBEL' || vendedor === 'VENDEDOR') continue;
+                const codRCA = row[idxCodRca] ? String(row[idxCodRca]).trim() : '';
+                const vendedor = row[idxVend] ? String(row[idxVend]).trim() : '';
+                const codSup = row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
+                const supervisor = row[idxSup] ? String(row[idxSup]).trim() : '';
+                
+                if (!vendedor || vendedor === 'HOTBEL' || vendedor.includes('VENDEDOR')) continue;
 
+                // Usa o parseBRNumber em vez do parseFloat simples
                 processed.push({
                     codRCA: codRCA,
                     vendedor: vendedor,
                     codSup: codSup,
                     supervisor: supervisor,
-                    metaSalty: parseFloat(row[6]) || 0,
-                    realSalty: parseFloat(row[7]) || 0,
-                    ptsSalty: parseFloat(row[9]) || 0,
-                    premSalty: parseFloat(row[10]) || 0,
-                    metaFoods: parseFloat(row[11]) || 0,
-                    realFoods: parseFloat(row[12]) || 0,
-                    ptsFoods: parseFloat(row[14]) || 0,
-                    premFoods: parseFloat(row[15]) || 0,
-                    metaPDB: parseFloat(row[16]) || 0,
-                    realPDB: parseFloat(row[17]) || 0,
-                    ptsPDB: parseFloat(row[19]) || 0,
-                    premPDB: parseFloat(row[20]) || 0,
-                    metaPos: parseFloat(row[22]) || 0,
-                    realPos: parseFloat(row[23]) || 0,
-                    ptsPos: parseFloat(row[25]) || 0,
-                    premPos: parseFloat(row[26]) || 0,
-                    metaAcel: parseFloat(row[27]) || 0,
-                    realAcel: parseFloat(row[28]) || 0,
-                    ptsAcel: parseFloat(row[30]) || 0,
-                    premAcel: parseFloat(row[31]) || 0,
-                    metaSKU: parseFloat(row[32]) || 0,
-                    realSKU: parseFloat(row[33]) || 0, 
-                    ptsSKU: parseFloat(row[35]) || 0,
-                    premSKU: parseFloat(row[36]) || 0,
-                    metaLoja: parseFloat(row[37]) || 0,
-                    realLoja: parseFloat(row[38]) || parseFloat(row[40]) || 0,
-                    ptsLoja: parseFloat(row[41]) || 0,
-                    premLoja: parseFloat(row[42]) || 0
+                    metaSalty: parseBRNumber(row[idxMetaSalty]),
+                    realSalty: parseBRNumber(row[idxRealSalty]),
+                    ptsSalty: parseBRNumber(row[idxPtsSalty]),
+                    premSalty: parseBRNumber(row[idxPremSalty]),
+                    metaFoods: parseBRNumber(row[idxMetaFoods]),
+                    realFoods: parseBRNumber(row[idxRealFoods]),
+                    ptsFoods: parseBRNumber(row[idxPtsFoods]),
+                    premFoods: parseBRNumber(row[idxPremFoods]),
+                    metaPDB: parseBRNumber(row[idxMetaPDB]),
+                    realPDB: parseBRNumber(row[idxRealPDB]),
+                    ptsPDB: parseBRNumber(row[idxPtsPDB]),
+                    premPDB: parseBRNumber(row[idxPremPDB]),
+                    metaPos: parseBRNumber(row[idxMetaPos]),
+                    realPos: parseBRNumber(row[idxRealPos]),
+                    ptsPos: parseBRNumber(row[idxPtsPos]),
+                    premPos: parseBRNumber(row[idxPremPos]),
+                    metaAcel: parseBRNumber(row[idxMetaAcel]),
+                    realAcel: parseBRNumber(row[idxRealAcel]),
+                    ptsAcel: parseBRNumber(row[idxPtsAcel]),
+                    premAcel: parseBRNumber(row[idxPremAcel]),
+                    metaSKU: parseBRNumber(row[idxMetaSKU]),
+                    realSKU: parseBRNumber(row[idxRealSKU]),
+                    ptsSKU: parseBRNumber(row[idxPtsSKU]),
+                    premSKU: parseBRNumber(row[idxPremSKU]),
+                    metaLoja: parseBRNumber(row[idxMetaLoja]),
+                    realLoja: parseBRNumber(row[idxRealLoja]),
+                    ptsLoja: parseBRNumber(row[idxPtsLoja]),
+                    premLoja: parseBRNumber(row[idxPremLoja])
                 });
             }
 
@@ -633,7 +740,6 @@
             let processed = [];
             let headerRowIndex = -1;
             
-            // Procura a linha que contém o cabeçalho VLFAT ou PESOBRUTO
             for(let i=0; i<Math.min(20, rows.length); i++) {
                 const rowStr = rows[i].map(c => String(c).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
                 if(rowStr.includes('VLFAT') || rowStr.includes('PESOBRUTO') || rowStr.includes('FATURAMENTO')) {
@@ -642,10 +748,7 @@
                 }
             }
             
-            if(headerRowIndex === -1) {
-                console.warn("Colunas VLFAT ou PESOBRUTO não encontradas na aba BD.");
-                return;
-            }
+            if(headerRowIndex === -1) return;
 
             const headers = rows[headerRowIndex].map(h => String(h).toUpperCase().replace(/[^A-Z0-9_]/g, ''));
             const idxCodRca = headers.findIndex(h => h.includes('CODRCA') || h.includes('CODVEND'));
@@ -667,22 +770,20 @@
                 const codSup = idxCodSup > -1 && row[idxCodSup] ? String(row[idxCodSup]).trim() : '';
                 const supervisor = idxSup > -1 && row[idxSup] ? String(row[idxSup]).trim() : '';
                 
-                // Aceita a linha se tiver CODRCA válido, mesmo que o nome do vendedor esteja vazio no BD
                 if (!codRCA && !vendedor) continue;
                 if (vendedor === 'VENDEDOR') continue;
 
-                let vol = idxCx > -1 ? parseFloat(row[idxCx]) : NaN;
-                if(isNaN(vol)) vol = idxUn > -1 ? parseFloat(row[idxUn]) : 0;
-                if(isNaN(vol)) vol = 0;
+                let vol = idxCx > -1 ? parseBRNumber(row[idxCx]) : NaN;
+                if(isNaN(vol) || vol === 0) vol = idxUn > -1 ? parseBRNumber(row[idxUn]) : 0;
 
                 processed.push({
                     codRCA: codRCA,
                     vendedor: vendedor,
                     codSup: codSup,
                     supervisor: supervisor,
-                    fat: idxFat > -1 ? (parseFloat(row[idxFat]) || 0) : 0,
+                    fat: idxFat > -1 ? parseBRNumber(row[idxFat]) : 0,
                     vol: vol,
-                    peso: idxPeso > -1 ? (parseFloat(row[idxPeso]) || 0) : 0,
+                    peso: idxPeso > -1 ? parseBRNumber(row[idxPeso]) : 0,
                     cli: idxCli > -1 && row[idxCli] ? String(row[idxCli]).trim() : ''
                 });
             }
@@ -690,9 +791,7 @@
             if(processed.length > 0) appDataBD = processed;
         }
 
-        // --- SISTEMA DE FILTROS ---
         function updateFilterOptions() {
-            // Puxar nomes SOMENTE da aba principal (META REALIZADO)
             const allSups = new Set(appData.map(d => d.supervisor));
             const allVends = new Set(appData.map(d => d.vendedor));
             
@@ -713,7 +812,6 @@
         selectSupervisor.addEventListener('change', () => {
             const sup = selectSupervisor.value;
             if(sup !== 'ALL') {
-                // Filtrar vendedores da equipa SOMENTE pela aba principal
                 const vendsMeta = appData.filter(d => d.supervisor === sup).map(d => d.vendedor);
                 const vends = [...new Set(vendsMeta)].sort();
                 
@@ -728,12 +826,11 @@
 
         selectVendedor.addEventListener('change', applyFiltersAndRender);
 
-        // Função auxiliar para normalizar IDs (remove zeros à esquerda e sufixos .0 para cruzamento perfeito)
         const normalizeId = (id) => {
             if (!id) return '';
             let str = String(id).trim().toUpperCase();
-            str = str.replace(/\.0$/, ''); // Remove falsos decimais do excel
-            if (/^0+[1-9]\d*$/.test(str)) str = str.replace(/^0+/, ''); // Remove zeros à esquerda de números puros
+            str = str.replace(/\.0$/, ''); 
+            if (/^0+[1-9]\d*$/.test(str)) str = str.replace(/^0+/, ''); 
             else if (/^0+$/.test(str)) str = '0';
             return str;
         };
@@ -742,46 +839,195 @@
             const sup = selectSupervisor.value;
             const vend = selectVendedor.value;
 
-            // Filtra os dados da tabela principal (META REALIZADO)
             filteredData = appData.filter(d => {
                 let matchSup = (sup === 'ALL' || d.supervisor === sup);
                 let matchVend = (vend === 'ALL' || d.vendedor === vend);
                 return matchSup && matchVend;
             });
 
-            // --- REGRA CRÍTICA DO REALIZADO (CARDS TOPO / ABA BD) ---
             if (vend !== 'ALL') {
-                // Filtro Vendedor: Retornar valor cruzando pela coluna CODRCA, CODVEND rigorosamente
                 const validRCAs = new Set(appData.filter(d => d.vendedor === vend).map(d => normalizeId(d.codRCA)).filter(Boolean));
                 filteredDataBD = appDataBD.filter(d => d.codRCA && validRCAs.has(normalizeId(d.codRCA)));
             } else if (sup !== 'ALL') {
-                // Filtro Supervisor: Retornar valor cruzando pela coluna CODSUP, CODSUPERVISOR rigorosamente
                 const validSUPs = new Set(appData.filter(d => d.supervisor === sup).map(d => normalizeId(d.codSup)).filter(Boolean));
                 filteredDataBD = appDataBD.filter(d => d.codSup && validSUPs.has(normalizeId(d.codSup)));
             } else {
-                // Sem filtro: Total da base (REALIZADO GERAL)
                 filteredDataBD = [...appDataBD];
             }
 
             updateKPIs();
             renderCharts();
-            updateVendedorProfile(); // Chama a nova função do banner
+            updateVendedorProfile();
         }
 
-        // --- NOVA LÓGICA: BANNER DE PERFIL DO VENDEDOR ---
+        // --- NOVA LÓGICA DE EXPORTAÇÃO (CSV E PDF) ---
+        function getExportData() {
+            // Ordenar por Supervisor -> Vendedor
+            const sortedData = [...filteredData].sort((a, b) => {
+                if (a.supervisor < b.supervisor) return -1;
+                if (a.supervisor > b.supervisor) return 1;
+                return a.vendedor.localeCompare(b.vendedor);
+            });
+
+            const categories = [
+                { id: 'SALTY', name: 'SALTY', meta: 'metaSalty', real: 'realSalty', pts: 'ptsSalty', prem: 'premSalty' },
+                { id: 'FOODS', name: 'FOODS', meta: 'metaFoods', real: 'realFoods', pts: 'ptsFoods', prem: 'premFoods' },
+                { id: 'PDB', name: 'TOTAL PDB', meta: 'metaPDB', real: 'realPDB', pts: 'ptsPDB', prem: 'premPDB' },
+                { id: 'POS', name: 'POSITIVACAO', meta: 'metaPos', real: 'realPos', pts: 'ptsPos', prem: 'premPos' },
+                { id: 'ACEL', name: 'ACELERADOR', meta: 'metaAcel', real: 'realAcel', pts: 'ptsAcel', prem: 'premAcel' },
+                { id: 'SKU', name: 'SKU PDV', meta: 'metaSKU', real: 'realSKU', pts: 'ptsSKU', prem: 'premSKU' },
+                { id: 'LOJA', name: 'LOJA PERFEITA', meta: 'metaLoja', real: 'realLoja', pts: 'ptsLoja', prem: 'premLoja' }
+            ];
+
+            let headers = ['SUPERVISOR', 'VENDEDOR'];
+            categories.forEach(c => {
+                headers.push(`META ${c.name}`);
+                headers.push(`REALIZADO ${c.name}`);
+                headers.push(`% ${c.name}`);
+                headers.push(`PONTOS ${c.name}`);
+                headers.push(`PREMIACAO ${c.name}`);
+            });
+            headers.push('TOTAL PREMIACAO');
+
+            let rows = [];
+            let totalGeralPremio = 0;
+
+            sortedData.forEach(d => {
+                let row = [d.supervisor, d.vendedor];
+                let totalPremioVend = 0;
+
+                categories.forEach(c => {
+                    let meta = d[c.meta] || 0;
+                    let real = d[c.real] || 0;
+                    let pts = d[c.pts] || 0;
+                    let prem = d[c.prem] || 0;
+                    let perc = meta > 0 ? ((real / meta) * 100).toFixed(1).replace('.', ',') + '%' : '0,0%';
+
+                    row.push(meta.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    row.push(real.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    row.push(perc);
+                    row.push(pts.toLocaleString('pt-BR', { maximumFractionDigits: 2 }));
+                    row.push(prem.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+                    totalPremioVend += prem;
+                });
+
+                row.push(totalPremioVend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                totalGeralPremio += totalPremioVend;
+                rows.push(row);
+            });
+
+            return { headers, rows, totalGeralPremio };
+        }
+
+        function exportCSV() {
+            if (filteredData.length === 0) return alert('Não há dados disponíveis para exportar.');
+            
+            const { headers, rows } = getExportData();
+            const csvData = [headers, ...rows];
+            
+            // Gerar CSV string delimitado por ponto e vírgula para compatibilidade com Excel em PT-BR
+            const csvString = Papa.unparse(csvData, { delimiter: ';' });
+            
+            // Codificação UTF-8 para garantir acentuação correta
+            const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Relatorio_Vendas_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        function exportPDF() {
+            if (filteredData.length === 0) return alert('Não há dados disponíveis para exportar.');
+            
+            const { jsPDF } = window.jspdf;
+            // Orientação landscape em tamanho A3 para acomodar as 38 colunas sem sobreposição
+            const doc = new jsPDF({ orientation: 'landscape', format: 'a3' });
+            
+            const { headers, rows, totalGeralPremio } = getExportData();
+
+            // Título
+            doc.setFontSize(18);
+            doc.setTextColor(30, 30, 30);
+            doc.text("Relatório de Desempenho de Vendas", 40, 40);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Data de Geração: ${new Date().toLocaleDateString('pt-BR')}`, 40, 55);
+
+            // Geração da Tabela usando jsPDF-AutoTable
+            let lastSup = null;
+
+            doc.autoTable({
+                head: [headers],
+                body: rows,
+                startY: 70,
+                theme: 'grid',
+                styles: { 
+                    fontSize: 6, 
+                    cellPadding: 2,
+                    halign: 'center',
+                    valign: 'middle'
+                },
+                headStyles: { 
+                    fillColor: [139, 92, 246], // brand-purple
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold'
+                },
+                columnStyles: {
+                    0: { halign: 'left', fontStyle: 'bold', cellWidth: 80 }, // Supervisor
+                    1: { halign: 'left', fontStyle: 'bold', cellWidth: 80 }  // Vendedor
+                },
+                // Hook para agrupar visualmente pelo Supervisor se houver mudança de linha
+                willDrawCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 0) {
+                        const currentSup = data.cell.raw;
+                        if (currentSup !== lastSup && data.row.index > 0) {
+                            // Aplicar estilo extra de topo quando muda o supervisor
+                            doc.setDrawColor(139, 92, 246);
+                            doc.setLineWidth(1);
+                            
+                            const startX = data.cell.x;
+                            const startY = data.cell.y;
+                            const pageWidth = doc.internal.pageSize.getWidth ? doc.internal.pageSize.getWidth() : doc.internal.pageSize.width;
+                            const endX = pageWidth - (data.settings.margin.right || 14);
+                            
+                            if (typeof startX === 'number' && typeof startY === 'number' && typeof endX === 'number' && !isNaN(startX) && !isNaN(startY) && !isNaN(endX)) {
+                                doc.line(startX, startY, endX, startY);
+                            }
+                        }
+                        lastSup = currentSup;
+                    }
+                },
+                didDrawPage: function(data) {
+                    // Rodapé da Página
+                    let str = "Página " + doc.internal.getNumberOfPages();
+                    doc.setFontSize(8);
+                    doc.text(str, data.settings.margin.left, doc.internal.pageSize.height - 15);
+                }
+            });
+
+            // Resumo/Totalizadores ao final
+            const finalY = doc.lastAutoTable.finalY + 30;
+            doc.setFontSize(14);
+            doc.setTextColor(16, 185, 129); // brand-green
+            doc.text(`TOTAL PREMIAÇÃO GERAL: R$ ${totalGeralPremio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 40, finalY);
+
+            // Salvar
+            doc.save(`Relatorio_Vendas_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
+
         function updateVendedorProfile() {
             const vendName = selectVendedor.value;
             const banner = document.getElementById('vendedorProfileBanner');
             const defaultHeader = document.getElementById('defaultHeader');
 
-            // Se for "ALL", mostra o título padrão e oculta o banner
             if (vendName === 'ALL') {
                 banner.classList.add('hidden');
                 defaultHeader.classList.remove('hidden');
                 return;
             }
 
-            // Calcula ranking geral absoluto (sem filtros)
             let vendorStats = {};
             appData.forEach(d => {
                 if (!vendorStats[d.vendedor]) {
@@ -799,10 +1045,8 @@
             let myStats = ranking[myRankIndex];
             let myRank = myRankIndex + 1;
 
-            // Preenche os dados da UI
             document.getElementById('vpName').innerText = myStats.name;
             
-            // Iniciais do Avatar
             let parts = myStats.name.trim().split(' ');
             let initials = parts[0][0];
             if (parts.length > 1) initials += parts[parts.length - 1][0];
@@ -811,7 +1055,6 @@
             document.getElementById('vpPts').innerText = Number.isInteger(myStats.pts) ? formatNumber(myStats.pts) : formatDecimal(myStats.pts);
             document.getElementById('vpPremio').innerText = formatCurrency(myStats.premio);
             
-            // Estilização do Selo de Ranking
             let rankHtml = `<i class="ph ph-trophy text-sm"></i> ${myRank}º Lugar Geral`;
             let rankEl = document.getElementById('vpRank');
             rankEl.className = 'px-2.5 py-1 border rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm';
@@ -828,7 +1071,6 @@
             }
             rankEl.innerHTML = rankHtml;
 
-            // Construção da Mensagem Dinâmica
             let msgEl = document.getElementById('vpMessage');
             if (ranking.length > 1) {
                 if (myRank === 1) {
@@ -850,14 +1092,11 @@
                 msgEl.innerHTML = `<span class="text-zinc-400">Único vendedor no ranking.</span>`;
             }
 
-            // Efetua a troca visual
             defaultHeader.classList.add('hidden');
             banner.classList.remove('hidden');
         }
 
-        // --- ATUALIZAÇÃO DE INTERFACE ---
         function updateKPIs() {
-            // 1. Atualizar KPIs do BD (Novos Cards)
             let bdFat = 0, bdVol = 0, bdPeso = 0;
             let cliSet = new Set();
 
@@ -865,11 +1104,11 @@
                 bdFat += d.fat;
                 bdVol += d.vol;
                 bdPeso += d.peso;
-                if (d.cli && d.fat > 0) cliSet.add(d.cli); // Conta apenas clientes com faturamento
+                if (d.cli && d.fat > 0) cliSet.add(d.cli);
             });
 
             const tons = bdPeso / 1000;
-            const positivacaoBD = cliSet.size; // Contagem distinta de CODCLI
+            const positivacaoBD = cliSet.size; 
             const ticketMedio = positivacaoBD > 0 ? (bdFat / positivacaoBD) : 0;
 
             document.getElementById('kpiBdFat').innerText = formatCurrency(bdFat);
@@ -878,7 +1117,6 @@
             document.getElementById('kpiBdTicket').innerText = formatCurrency(ticketMedio);
 
 
-            // 2. Atualizar KPIs da Tabela (Meta x Realizado)
             let tMeta = 0, tReal = 0, tPrem = 0, tPts = 0;
             let fMeta = 0, fReal = 0, fPrem = 0, fPts = 0;
             let sMeta = 0, sReal = 0, sPrem = 0, sPts = 0;
@@ -897,13 +1135,10 @@
                 lMeta += d.metaLoja; lReal += d.realLoja; lPrem += d.premLoja; lPts += d.ptsLoja;
             });
 
-            // Substitui o Realizado da Positivação pela contagem da aba BD (se o BD foi carregado)
             if (appDataBD.length > 0) {
                 pReal = positivacaoBD;
             }
             
-            // --- NOVA LÓGICA: Calcula o Percentual do Geral de CADA Categoria (Gatilho) ---
-            // O gatilho não é afetado pelos filtros (olha sempre para a base total)
             let g_tMeta = 0, g_tReal = 0;
             let g_fMeta = 0, g_fReal = 0;
             let g_sMeta = 0, g_sReal = 0;
@@ -950,11 +1185,7 @@
             renderGatilho(g_aMeta, g_aReal, 'kpiUnlockAcel');
             renderGatilho(g_skuMeta, g_skuReal, 'kpiUnlockSKU');
             renderGatilho(g_lMeta, g_lReal, 'kpiUnlockLoja');
-
-
-            // --- FIM DA LÓGICA DO GATILHO ---
             
-            // Variável pTotal corrigida e calculada novamente para uso individual
             let pTotal = tMeta > 0 ? ((tReal/tMeta)*100).toFixed(1) : 0;
 
             document.getElementById('kpiTotalMeta').innerText = formatCurrency(tMeta);
@@ -981,7 +1212,6 @@
             document.getElementById('kpiPosPts').innerText = formatNumber(pPts);
             updateBadge('kpiPosPercent', pMeta > 0 ? ((pReal/pMeta)*100).toFixed(1) : 0, true);
             
-            // Atualiza o novo Card de Positivação no Topo
             document.getElementById('kpiTopPos').innerText = formatNumber(pReal);
 
             document.getElementById('kpiAcelMeta').innerText = formatNumber(aMeta);
@@ -1018,7 +1248,6 @@
             }
         }
 
-        // --- RENDERIZAÇÃO DOS GRÁFICOS ---
         function renderCharts() {
             let vends = [...filteredData].sort((a, b) => {
                 let percA = a.metaPDB > 0 ? a.realPDB / a.metaPDB : 0;
@@ -1118,36 +1347,18 @@
             });
         }
 
-        // --- LÓGICA DO MODAL DE RANKING ---
-        function openRankingModal() {
-            document.getElementById('rankingModal').classList.remove('hidden');
-            populateRankingModal();
-        }
-
-        function closeRankingModal() {
-            document.getElementById('rankingModal').classList.add('hidden');
-        }
-
-        // Fechar ao clicar fora do modal
-        document.getElementById('rankingModal').addEventListener('click', function(e) {
-            if (e.target === this) closeRankingModal();
-        });
-
         function populateRankingModal() {
             const tbody = document.getElementById('rankingModalBody');
             tbody.innerHTML = '';
 
-            // Calcular o total de pontos para cada vendedor filtrado
             let rankingData = filteredData.map(d => {
                 let totalPts = (d.ptsPDB || 0) + (d.ptsSalty || 0) + (d.ptsFoods || 0) + 
                                (d.ptsPos || 0) + (d.ptsAcel || 0) + (d.ptsSKU || 0) + (d.ptsLoja || 0);
                 return { ...d, totalPts: totalPts };
             });
 
-            // Ordenar por pontos (do maior para o menor)
             rankingData.sort((a, b) => b.totalPts - a.totalPts);
 
-            // Formatador local para pontos com 1 casa decimal se necessário
             const formatPts = (val) => Number.isInteger(val) ? formatNumber(val) : formatDecimal(val);
 
             rankingData.forEach((d, index) => {
@@ -1182,7 +1393,6 @@
             }
         }
 
-        // --- INICIALIZAÇÃO COM DADOS MOCKADOS ---
         window.onload = () => {
             appData = initialData;
             appDataBD = initialDataBD;
